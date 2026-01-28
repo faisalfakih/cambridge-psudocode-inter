@@ -1,117 +1,119 @@
-use crate::errortype::LexicalError;
+use crate::errortype::{CPSError, ErrorType};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum TokenType {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TokenType {
     // KEYWORDS
-    AND,
-    APPEND, 
-    ARRAY, 
-    BOOLEAN, 
-    BYREF,
-    BYVAL,
-    CALL,
-    CASE,
-    OF,
-    CHAR,  
-    CLASS,
-    CLOSEFILE,
-    CONSTANT, 
-    DATE,
-    DECLARE, 
-    DIV, 
-    ELSE,
-    ENDCASE,
-    ENDCLASS, 
-    ENDFUNCTION, 
-    ENDIF,
-    ENDPROCEDURE,
-    ENDTYPE,
-    ENDWHILE,
-    EOF,
-    FALSE,
-    FOR,
-    TO,
-    FUNCTION,
-    GETRECORD,
-    IF,
-    INHERITS,
-    INPUT, 
-    INT, 
-    INTEGER,
-    LCASE,
-    LENGTH, 
-    MID,
-    MOD,
-    NEXT,
-    NEW,
-    NOT,
-    OPENFILE,
-    OR,
-    OTHERWISE, 
-    OUTPUT,
-    PROCEDURE,
-    PRIVATE,
-    PUBLIC,
-    PUTRECORD,
-    RAND,
-    RANDOM,
-    READ,
-    READFILE,
-    REAL,
-    REPEAT,
-    RETURN, 
-    RETURNS,
-    RIGHT,
-    SEEK,
-    STEP,
-    STRING,
-    SUPER,
-    THEN,
-    TRUE,
-    TYPE,
-    UCASE,
-    UNTIL,
-    WHILE,
-    WRITE,
-    WRITEFILE,
+    And,
+    Append, 
+    Array, 
+    Boolean, 
+    ByRef,
+    ByVal,
+    Call,
+    Case,
+    Of,
+    Char,  
+    Class,
+    CloseFile,
+    Constant, 
+    Date,
+    Declare, 
+    Div, 
+    Else,
+    EndCase,
+    EndClass, 
+    EndFunction, 
+    EndIf,
+    EndProcedure,
+    EndType,
+    EndWhile,
+    Eof,
+    False,
+    For,
+    To,
+    Function,
+    GetRecord,
+    If,
+    Inherits,
+    Input, 
+    Int, 
+    Integer,
+    LCase,
+    Length, 
+    Mid,
+    Mod,
+    Next,
+    New,
+    Not,
+    OpenFile,
+    Or,
+    Otherwise, 
+    Output,
+    Procedure,
+    Private,
+    Public,
+    PutRecord,
+    Rand,
+    Random,
+    Read,
+    ReadFile,
+    Real,
+    Repeat,
+    Return, 
+    Returns,
+    Right,
+    Seek,
+    Step,
+    String,
+    Super,
+    Then,
+    True,
+    Type,
+    UCase,
+    Until,
+    While,
+    Write,
+    WriteFile,
 
     // IDENTIFIERS AND LITERALS
-    IDENTIFIER,
-    NUMBER_LITERAL,
-    STRING_LITERAL,
-    CHAR_LITERAL,
+    Identifier,
+    NumberLiteral,
+    StringLiteral,
+    CharLiteral,
 
     // OPERATORS
-    MINUS,
-    ARROW,
-    ASTERISK,
-    FORWARD_SLASH,
-    COMMENT,
-    PLUS,
-    LESS_THAN,
-    LESS_EQUAL,
-    NOT_EQUAL,
-    EQUAL,
-    GREATER_THAN,
-    GREATER_EQUAL,
-    CARET,
-    AMPERSAND,
-    COLON,
+    Minus,
+    Arrow,
+    Asterisk,
+    ForwardSlash,
+    Comment,
+    Plus,
+    LessThan,
+    LessEqual,
+    NotEqual,
+    Equal,
+    GreaterThan,
+    GreaterEqual,
+    Caret,
+    Ampersand,
+    Colon,
+    LParen,
+    RParen,
 }
 
 
 #[derive(Debug, Clone)]
 pub struct Token {
-    lexeme: String,
-    token_type: TokenType,
-    line: usize,
-    column: usize,
-    error: Option<LexicalError>,
+    pub lexeme: String,
+    pub token_type: TokenType,
+    pub line: usize,
+    pub column: usize,
+    error: Option<CPSError>,
 }
 
 impl Token {
-    fn new(lexeme: String, token_type: TokenType, line: usize, column: usize) -> Self {
+    pub fn new(lexeme: String, token_type: TokenType, line: usize, column: usize) -> Self {
         Token {
             lexeme,
             token_type,
@@ -123,7 +125,7 @@ impl Token {
 
 }
 
-
+#[derive(Debug, Clone)]
 pub struct Lexer {
     source: String,
     position: usize,
@@ -133,93 +135,95 @@ pub struct Lexer {
 }
 
 
-impl Lexer { pub fn new(source: String) -> Self {
+impl Lexer {
+    pub fn new(source: String) -> Self {
         let token_map: HashMap<String, TokenType> = [
             // Keywords A-C
-            ("AND".to_string(), TokenType::AND),
-            ("APPEND".to_string(), TokenType::APPEND),
-            ("ARRAY".to_string(), TokenType::ARRAY),
-            ("BOOLEAN".to_string(), TokenType::BOOLEAN),
-            ("BYREF".to_string(), TokenType::BYREF),
-            ("BYVAL".to_string(), TokenType::BYVAL),
-            ("CALL".to_string(), TokenType::CALL),
-            ("CASE".to_string(), TokenType::CASE),
-            ("CHAR".to_string(), TokenType::CHAR),
-            ("CLASS".to_string(), TokenType::CLASS),
-            ("CLOSEFILE".to_string(), TokenType::CLOSEFILE),
-            ("CONSTANT".to_string(), TokenType::CONSTANT),
+            ("AND".to_string(), TokenType::And),
+            ("APPEND".to_string(), TokenType::Append),
+            ("ARRAY".to_string(), TokenType::Array),
+            ("BOOLEAN".to_string(), TokenType::Boolean),
+            ("BYREF".to_string(), TokenType::ByRef),
+            ("BYVAL".to_string(), TokenType::ByVal),
+            ("CALL".to_string(), TokenType::Call),
+            ("CASE".to_string(), TokenType::Case),
+            ("CHAR".to_string(), TokenType::Char),
+            ("CLASS".to_string(), TokenType::Class),
+            ("CLOSEFILE".to_string(), TokenType::CloseFile),
+            ("CONSTANT".to_string(), TokenType::Constant),
 
             // Keywords D-F
-            ("DATE".to_string(), TokenType::DATE),
-            ("DECLARE".to_string(), TokenType::DECLARE),
-            ("DIV".to_string(), TokenType::DIV),
-            ("ELSE".to_string(), TokenType::ELSE),
-            ("ENDCASE".to_string(), TokenType::ENDCASE),
-            ("ENDCLASS".to_string(), TokenType::ENDCLASS),
-            ("ENDFUNCTION".to_string(), TokenType::ENDFUNCTION),
-            ("ENDIF".to_string(), TokenType::ENDIF),
-            ("ENDPROCEDURE".to_string(), TokenType::ENDPROCEDURE),
-            ("ENDTYPE".to_string(), TokenType::ENDTYPE),
-            ("ENDWHILE".to_string(), TokenType::ENDWHILE),
-            ("EOF".to_string(), TokenType::EOF),
-            ("FALSE".to_string(), TokenType::FALSE),
-            ("FOR".to_string(), TokenType::FOR),
-            ("FUNCTION".to_string(), TokenType::FUNCTION),
+            ("DATE".to_string(), TokenType::Date),
+            ("DECLARE".to_string(), TokenType::Declare),
+            ("DIV".to_string(), TokenType::Div),
+            ("ELSE".to_string(), TokenType::Else),
+            ("ENDCASE".to_string(), TokenType::EndCase),
+            ("ENDCLASS".to_string(), TokenType::EndClass),
+            ("ENDFUNCTION".to_string(), TokenType::EndFunction),
+            ("ENDIF".to_string(), TokenType::EndIf),
+            ("ENDPROCEDURE".to_string(), TokenType::EndProcedure),
+            ("ENDTYPE".to_string(), TokenType::EndType),
+            ("ENDWHILE".to_string(), TokenType::EndWhile),
+            ("EOF".to_string(), TokenType::Eof),
+            ("FALSE".to_string(), TokenType::False),
+            ("FOR".to_string(), TokenType::For),
+            ("FUNCTION".to_string(), TokenType::Function),
 
             // Keywords G-L
-            ("GETRECORD".to_string(), TokenType::GETRECORD),
-            ("IF".to_string(), TokenType::IF),
-            ("INHERITS".to_string(), TokenType::INHERITS),
-            ("INPUT".to_string(), TokenType::INPUT),
-            ("INT".to_string(), TokenType::INT),
-            ("INTEGER".to_string(), TokenType::INTEGER),
-            ("LCASE".to_string(), TokenType::LCASE),
-            ("LENGTH".to_string(), TokenType::LENGTH),
+            ("GETRECORD".to_string(), TokenType::GetRecord),
+            ("IF".to_string(), TokenType::If),
+            ("INHERITS".to_string(), TokenType::Inherits),
+            ("INPUT".to_string(), TokenType::Input),
+            ("INT".to_string(), TokenType::Int),
+            ("INTEGER".to_string(), TokenType::Integer),
+            ("LCASE".to_string(), TokenType::LCase),
+            ("LENGTH".to_string(), TokenType::Length),
 
             // Keywords M-O
-            ("MID".to_string(), TokenType::MID),
-            ("MOD".to_string(), TokenType::MOD),
-            ("NEW".to_string(), TokenType::NEW),
-            ("NEXT".to_string(), TokenType::NEXT),
-            ("NOT".to_string(), TokenType::NOT),
-            ("OF".to_string(), TokenType::OF),
-            ("OPENFILE".to_string(), TokenType::OPENFILE),
-            ("OR".to_string(), TokenType::OR),
-            ("OTHERWISE".to_string(), TokenType::OTHERWISE),
-            ("OUTPUT".to_string(), TokenType::OUTPUT),
+            ("MID".to_string(), TokenType::Mid),
+            ("MOD".to_string(), TokenType::Mod),
+            ("NEW".to_string(), TokenType::New),
+            ("NEXT".to_string(), TokenType::Next),
+            ("NOT".to_string(), TokenType::Not),
+            ("OF".to_string(), TokenType::Of),
+            ("OPENFILE".to_string(), TokenType::OpenFile),
+            ("OR".to_string(), TokenType::Or),
+            ("OTHERWISE".to_string(), TokenType::Otherwise),
+            ("OUTPUT".to_string(), TokenType::Output),
 
             // Keywords P-R
-            ("PRIVATE".to_string(), TokenType::PRIVATE),
-            ("PROCEDURE".to_string(), TokenType::PROCEDURE),
-            ("PUBLIC".to_string(), TokenType::PUBLIC),
-            ("PUTRECORD".to_string(), TokenType::PUTRECORD),
-            ("RAND".to_string(), TokenType::RAND),
-            ("RANDOM".to_string(), TokenType::RANDOM),
-            ("READ".to_string(), TokenType::READ),
-            ("READFILE".to_string(), TokenType::READFILE),
-            ("REAL".to_string(), TokenType::REAL),
-            ("REPEAT".to_string(), TokenType::REPEAT),
-            ("RETURN".to_string(), TokenType::RETURN),
-            ("RETURNS".to_string(), TokenType::RETURNS),
-            ("RIGHT".to_string(), TokenType::RIGHT),
+            ("PRINT".to_string(), TokenType::Output), // alias for OUTPUT
+            ("PRIVATE".to_string(), TokenType::Private),
+            ("PROCEDURE".to_string(), TokenType::Procedure),
+            ("PUBLIC".to_string(), TokenType::Public),
+            ("PUTRECORD".to_string(), TokenType::PutRecord),
+            ("RAND".to_string(), TokenType::Rand),
+            ("RANDOM".to_string(), TokenType::Random),
+            ("READ".to_string(), TokenType::Read),
+            ("READFILE".to_string(), TokenType::ReadFile),
+            ("REAL".to_string(), TokenType::Real),
+            ("REPEAT".to_string(), TokenType::Repeat),
+            ("RETURN".to_string(), TokenType::Return),
+            ("RETURNS".to_string(), TokenType::Returns),
+            ("RIGHT".to_string(), TokenType::Right),
 
             // Keywords S-U
-            ("SEEK".to_string(), TokenType::SEEK),
-            ("STEP".to_string(), TokenType::STEP),
-            ("STRING".to_string(), TokenType::STRING),
-            ("SUPER".to_string(), TokenType::SUPER),
-            ("THEN".to_string(), TokenType::THEN),
-            ("TO".to_string(), TokenType::TO),
-            ("TRUE".to_string(), TokenType::TRUE),
-            ("TYPE".to_string(), TokenType::TYPE),
-            ("UCASE".to_string(), TokenType::UCASE),
-            ("UNTIL".to_string(), TokenType::UNTIL),
+            ("SEEK".to_string(), TokenType::Seek),
+            ("STEP".to_string(), TokenType::Step),
+            ("STRING".to_string(), TokenType::String),
+            ("SUPER".to_string(), TokenType::Super),
+            ("THEN".to_string(), TokenType::Then),
+            ("TO".to_string(), TokenType::To),
+            ("TRUE".to_string(), TokenType::True),
+            ("TYPE".to_string(), TokenType::Type),
+            ("UCASE".to_string(), TokenType::UCase),
+            ("UNTIL".to_string(), TokenType::Until),
 
             // Keywords W
-            ("WHILE".to_string(), TokenType::WHILE),
-            ("WRITE".to_string(), TokenType::WRITE),
-            ("WRITEFILE".to_string(), TokenType::WRITEFILE),
-            ].iter().cloned().collect();
+            ("WHILE".to_string(), TokenType::While),
+            ("WRITE".to_string(), TokenType::Write),
+            ("WRITEFILE".to_string(), TokenType::WriteFile),
+        ].iter().cloned().collect();
 
         Lexer {
             source,
@@ -235,12 +239,12 @@ impl Lexer { pub fn new(source: String) -> Self {
         self.source.chars().nth(self.position + n)
     }
 
-    pub fn tokenize(mut self) -> Result<Vec<Token>, LexicalError> {
+    pub fn tokenize(mut self) -> Result<Vec<Token>, CPSError> {
         let mut tokens = Vec::new();
 
         loop {
             let token = self.get_next_token()?;
-            if token.token_type == TokenType::EOF {
+            if token.token_type == TokenType::Eof {
                 tokens.push(token);
                 break;
             }
@@ -250,7 +254,7 @@ impl Lexer { pub fn new(source: String) -> Self {
         Ok(tokens)
     }
 
-    fn get_next_token(&mut self) -> Result<Token, LexicalError> {
+    fn get_next_token(&mut self) -> Result<Token, CPSError> {
 
         // tokenize symbols and literals first
         // iterate through source code character by character
@@ -273,7 +277,7 @@ impl Lexer { pub fn new(source: String) -> Self {
             // Check for end of file
             let c = match self.peek(0) {
                 Some(ch) => ch,
-                None => return Ok(Token::new("".to_string(), TokenType::EOF, self.line, self.column)),
+                None => return Ok(Token::new("".to_string(), TokenType::Eof, self.line, self.column)),
             };
 
             // check for symbols
@@ -281,27 +285,26 @@ impl Lexer { pub fn new(source: String) -> Self {
                 '+' => {
                     self.position += 1;
                     self.column += 1;
-                    return Ok(Token::new("+".to_string(), TokenType::PLUS, self.line, self.column - 1));
+                    return Ok(Token::new("+".to_string(), TokenType::Plus, self.line, self.column - 1));
                 },
                 '-' => {
                     self.position += 1;
                     self.column += 1;
-                    return Ok(Token::new("-".to_string(), TokenType::MINUS, self.line, self.column - 1));
+                    return Ok(Token::new("-".to_string(), TokenType::Minus, self.line, self.column - 1));
                 },
                 '*' => {
                     self.position += 1;
                     self.column += 1;
-                    return Ok(Token::new("*".to_string(), TokenType::ASTERISK, self.line, self.column - 1));
+                    return Ok(Token::new("*".to_string(), TokenType::Asterisk, self.line, self.column - 1));
                 },
                 '=' => {
                     self.position += 1;
                     self.column += 1;
-                    return Ok(Token::new("=".to_string(), TokenType::EQUAL, self.line, self.column - 1));
+                    return Ok(Token::new("=".to_string(), TokenType::Equal, self.line, self.column - 1));
                 },
                 '/' => {
                     if self.peek(1) == Some('/') {
-                        // it's a comment, skip to end of line
-                        while let Some(next_char) = self.peek(1) {
+                        while let Some(next_char) = self.peek(1) { // skip until end of commend
                             if next_char == '\n' {
                                 break;
                             }
@@ -312,22 +315,27 @@ impl Lexer { pub fn new(source: String) -> Self {
                     }
                     self.position += 1;
                     self.column += 1;
-                    return Ok(Token::new("/".to_string(), TokenType::FORWARD_SLASH, self.line, self.column - 1));
+                    return Ok(Token::new("/".to_string(), TokenType::ForwardSlash, self.line, self.column - 1));
                 },
                 '<' => {
                     let next_char = self.peek(1);
-                    if next_char == Some('=') {
+                    if next_char == Some('-') {
                         self.position += 2;
                         self.column += 2;
-                        return Ok(Token::new("<=".to_string(), TokenType::LESS_EQUAL, self.line, self.column - 2));
+                        return Ok(Token::new("<-".to_string(), TokenType::Arrow, self.line, self.column - 2))
+                    }
+                    else if next_char == Some('=') {
+                        self.position += 2;
+                        self.column += 2;
+                        return Ok(Token::new("<=".to_string(), TokenType::LessEqual, self.line, self.column - 2));
                     } else if next_char == Some('>') {
                         self.position += 2;
                         self.column += 2;
-                        return Ok(Token::new("<>".to_string(), TokenType::NOT_EQUAL, self.line, self.column - 2));
+                        return Ok(Token::new("<>".to_string(), TokenType::NotEqual, self.line, self.column - 2));
                     } else {
                         self.position += 1;
                         self.column += 1;
-                        return Ok(Token::new("<".to_string(), TokenType::LESS_THAN, self.line, self.column - 1));
+                        return Ok(Token::new("<".to_string(), TokenType::LessThan, self.line, self.column - 1));
                     }
                 }
                 '>' => {
@@ -335,22 +343,22 @@ impl Lexer { pub fn new(source: String) -> Self {
                     if next_char == Some('=') {
                         self.position += 2;
                         self.column += 2;
-                        return Ok(Token::new(">=".to_string(), TokenType::GREATER_EQUAL, self.line, self.column - 2));
+                        return Ok(Token::new(">=".to_string(), TokenType::GreaterEqual, self.line, self.column - 2));
                     } else {
                         self.position += 1;
                         self.column += 1;
-                        return Ok(Token::new(">".to_string(), TokenType::GREATER_THAN, self.line, self.column - 1));
+                        return Ok(Token::new(">".to_string(), TokenType::GreaterThan, self.line, self.column - 1));
                     }
                 },
                 '^' => {
                     self.position += 1;
                     self.column += 1;
-                    return Ok(Token::new("^".to_string(), TokenType::CARET, self.line, self.column - 1));
+                    return Ok(Token::new("^".to_string(), TokenType::Caret, self.line, self.column - 1));
                 },
                 '&' => {
                     self.position += 1;
                     self.column += 1;
-                    return Ok(Token::new("&".to_string(), TokenType::AMPERSAND, self.line, self.column - 1));
+                    return Ok(Token::new("&".to_string(), TokenType::Ampersand, self.line, self.column - 1));
                 },
                 '"' => {
                     return self.handle_string_literal();
@@ -358,11 +366,22 @@ impl Lexer { pub fn new(source: String) -> Self {
                 ':' => {
                     self.position += 1;
                     self.column += 1;
-                    return Ok(Token::new(":".to_string(), TokenType::COLON, self.line, self.column - 1));
-                }
+                    return Ok(Token::new(":".to_string(), TokenType::Colon, self.line, self.column - 1));
+                },
+                '(' => {
+                    self.position += 1;
+                    self.column += 1;
+                    return Ok(Token::new("(".to_string(), TokenType::LParen, self.line, self.column - 1));
+                },
+                ')' => {
+                    self.position += 1;
+                    self.column += 1;
+                    return Ok(Token::new(")".to_string(), TokenType::RParen, self.line, self.column - 1));
+                },
                 _ if c.is_alphabetic() || c == '_' => return self.handle_identifier(),
                 _ if c.is_digit(10) =>  return self.handle_number_literal(),
-                _ => return Err(LexicalError {
+                _ => return Err(CPSError {
+                    error_type: ErrorType::Lexical,
                     message: format!("Unexpected character: '{}'", c),
                     hint: None,
                     line: self.line,
@@ -372,10 +391,10 @@ impl Lexer { pub fn new(source: String) -> Self {
             }
         }
 
-        Ok(Token::new("".to_string(), TokenType::EOF, self.line, self.column))
+        Ok(Token::new("".to_string(), TokenType::Eof, self.line, self.column))
     }
 
-    fn handle_string_literal(&mut self) -> Result<Token, LexicalError> {
+    fn handle_string_literal(&mut self) -> Result<Token, CPSError> {
         let start_line = self.line;
         let start_column = self.column;
         let mut lexeme = String::new();
@@ -389,7 +408,7 @@ impl Lexer { pub fn new(source: String) -> Self {
                 // closing quote found
                 self.position += 1;
                 self.column += 1;
-                return Ok(Token::new(lexeme, TokenType::STRING_LITERAL, start_line, start_column));
+                return Ok(Token::new(lexeme, TokenType::StringLiteral, start_line, start_column));
             } else {
                 lexeme.push(c);
                 self.position += 1;
@@ -398,7 +417,8 @@ impl Lexer { pub fn new(source: String) -> Self {
         }
 
         // if we reach here, the string literal was not closed
-        Err(LexicalError {
+        Err(CPSError {
+            error_type: ErrorType::Lexical,
             message: "Your string was not closed!".to_string(),
             hint: Some("Make sure to close your string with a \"".to_string()),
             line: start_line,
@@ -407,7 +427,7 @@ impl Lexer { pub fn new(source: String) -> Self {
         })
     }
 
-    fn handle_identifier(&mut self) -> Result<Token, LexicalError> {
+    fn handle_identifier(&mut self) -> Result<Token, CPSError> {
         let start_line = self.line;
         let start_column = self.column;
         let mut lexeme = String::new();
@@ -424,13 +444,13 @@ impl Lexer { pub fn new(source: String) -> Self {
 
         let token_type = match self.token_map.get(lexeme.as_str()) {
             Some(t) => t.clone(),
-            None => TokenType::IDENTIFIER,
+            None => TokenType::Identifier,
         };
 
         Ok(Token::new(lexeme, token_type, start_line, start_column))
     }  
 
-    fn handle_number_literal(&mut self) -> Result<Token, LexicalError> {
+    fn handle_number_literal(&mut self) -> Result<Token, CPSError> {
         let start_line = self.line;
         let start_column = self.column;
         let mut lexeme = String::new();
@@ -445,7 +465,8 @@ impl Lexer { pub fn new(source: String) -> Self {
                 self.position += 1;
                 self.column += 1;
             } else if c.is_alphabetic() {
-                return Err(LexicalError {
+                return Err(CPSError {
+                    error_type: ErrorType::Lexical,
                     message: "Invalid character in number literal".to_string(),
                     hint: Some("Number literals can only contain digits and decimal points.".to_string()),
                     line: self.line,
@@ -458,8 +479,7 @@ impl Lexer { pub fn new(source: String) -> Self {
             }
         }
 
-        Ok(Token::new(lexeme, TokenType::NUMBER_LITERAL, start_line, start_column))
+        Ok(Token::new(lexeme, TokenType::NumberLiteral, start_line, start_column))
     }
 
-} 
-
+}

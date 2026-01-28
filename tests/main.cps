@@ -1,5 +1,1 @@
-DECLARE name : STRING
-DECLARE num : INTEGER
-// num <- 0a
-PRINT "Hello world
-
+1/(6+2) + 2+ 3 <-

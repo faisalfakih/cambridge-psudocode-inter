@@ -1,8 +1,18 @@
-use std::{fmt, error::Error};
+use std::error::Error;
 use colored::Colorize;
 
+
 #[derive(Debug, Clone)]
-pub struct LexicalError {
+pub enum ErrorType {
+    Lexical, 
+    Syntax,
+    Semantic,
+    Runtime,
+}
+
+#[derive(Debug, Clone)]
+pub struct CPSError {
+    pub error_type: ErrorType,
     pub message: String,
     pub hint : Option<String>,
     pub line: usize,
@@ -10,14 +20,26 @@ pub struct LexicalError {
     pub source: Option<String>,
 }
 
-impl Error for LexicalError {}
+impl Error for CPSError {}
+
+impl std::fmt::Display for ErrorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            ErrorType::Lexical => write!(f, "Lexical"),
+            ErrorType::Syntax => write!(f, "Syntax"),
+            ErrorType::Semantic => write!(f, "Semantic"),
+            ErrorType::Runtime => write!(f, "Runtime"),
+        }
+    }
+}
     
 
 
-impl std::fmt::Display for LexicalError {
+impl std::fmt::Display for CPSError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let _ = writeln!(f, "{}: Lexical Error at line {}, column {}: {}",
+        let _ = writeln!(f, "{}: {} Error at line {}, column {}: {}",
             "ERROR".bright_red().bold(),
+            format!("{:?}", self.error_type).bright_red(),
             self.line,
             self.column,
             self.message
