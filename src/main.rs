@@ -23,10 +23,12 @@ fn main() {
     }
 
     let mut parser = parser::Parser::new(lexer.tokenize().unwrap(), contents.to_owned()).clone();
-    let res = parser.parse_top_expr();
+    let res = parser.parse_statements();
     match res {
         Ok(ast) => {
-            ast.print_prefix();
+            for a in ast.iter() {
+                a.print_prefix();
+            }
         }
         Err(e) => {
             eprintln!("{}", e);

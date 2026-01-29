@@ -1,1 +1,5 @@
-1/(6+2) + 2+ 3 <-
+IF 1 + 1 = 2 THEN
+    PRINT 1 + 1
+ELSE 
+    PRINT 1 + 1
+ENDIF

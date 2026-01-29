@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::Lexer::{lexer::Token, lexer::TokenType};
 use crate::errortype::{CPSError, ErrorType};
 use crate::Parser::ast::{BinaryExpr};
-use super::ast::{Ast, Operator, Position, Associativity, Precedence};
+use super::ast::{Ast, Operator, Position, Associativity, Precedence, Stmt};
 
 
 #[derive(Debug, Clone)]
@@ -66,8 +66,9 @@ impl Parser {
     }
 
     fn advance(&mut self) -> Token {
+        let peek = self.peek(0);
         self.position += 1;
-        self.peek(0)
+        peek
     }
 
     fn is_terminator(&self, token_type: TokenType) -> bool {
@@ -77,8 +78,10 @@ impl Parser {
             TokenType::Asterisk |
             TokenType::ForwardSlash |
             TokenType::Caret
+            | TokenType::Mod | TokenType::Div
+            | TokenType::Equal | TokenType::NotEqual | TokenType::LessThan | TokenType::LessEqual
             | TokenType::Identifier | TokenType::NumberLiteral | TokenType::StringLiteral | TokenType::CharLiteral
-            | TokenType::True | TokenType::False
+            // | TokenType::True | TokenType::False
             | TokenType::LParen | TokenType::Eof
         )
     }
@@ -185,14 +188,157 @@ impl Parser {
 
             let rhs = self.parse_expr(next_min_prec)?;
 
-            lhs = Ast::BinaryOp(BinaryExpr {
+            lhs = Ast::Expression(super::ast::Expr::Binary(BinaryExpr {
                 left: Box::new(lhs),
                 operator: op_token,
                 right: Box::new(rhs),
-            });
+            }));
         }
+
+        // consume last token 
+        // let _ = self.advance();
 
         Ok(lhs)
     }
+
+    pub fn parse_statements(&mut self) -> Result<Vec<Ast>, CPSError> {
+        let mut ast = vec![]; 
+        loop {
+            let token = self.peek(0);
+            let statement = match token.token_type {
+                TokenType::If => self.parse_if_statement(),
+                TokenType::Output => self.parse_output(),
+                TokenType::NumberLiteral => self.parse_top_expr(),
+                // terminate if it leaves the scope
+                TokenType::Eof | TokenType::EndIf | TokenType::EndCase | TokenType::EndType | TokenType::Else
+                    | TokenType::EndClass | TokenType::EndWhile | TokenType::EndFunction | TokenType::EndProcedure => break,
+                _ => {
+                    return Err(CPSError { 
+                        error_type: ErrorType::Syntax,
+                        message: format!("Unexpected token in statement: {:?}", token.token_type),
+                        hint: Some("Expected a valid statement".to_string()),
+                        line: token.line,
+                        column: token.column,
+                        source: Some(self.source.clone()),
+                    })
+                }
+            };
+            match statement {
+                Err(e) => return Err(e),
+                _ => {}
+            }
+            ast.push(statement?);
+        }
+        Ok(ast)
+    }
+
+    fn parse_output(&mut self) -> Result<Ast, CPSError> {
+        // consume 'output' token
+        let output_token = self.advance();
+        let expr = match self.parse_expr(0)? {
+            Ast::Expression(e) => e,
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Syntax,
+                    message: "Expected an expression after OUTPUT".to_string(),
+                    hint: Some("OUTPUT must be followed by a valid expression".to_string()),
+                    line: output_token.line,
+                    column: output_token.column,
+                    source: Some(self.source.clone()),
+                });
+            }
+        };
+        Ok(Ast::Stmt(Stmt::Output { target: expr }))
+    }
+
+    
+
+    fn parse_if_statement(&mut self) -> Result<Ast, CPSError> {
+        let if_token = self.advance(); // consume 'if'
+        let condition = self.parse_expr(0)?;
+        // consume the 'THEN'
+        let then = self.peek(0);
+        if then.token_type != TokenType::Then {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected 'then' after if condition".to_string(),
+                hint: Some("IF statements must have a THEN clause".to_string()),
+                line: then.line,
+                column: then.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        // consume 'then'
+        self.advance();
+        let then_branch = self.parse_statements()?;
+        let else_branch = if self.peek(0).token_type == TokenType::Else {
+            self.advance(); // consume 'else'
+            Some(self.parse_statements()?)
+        } else {
+            None
+        };
+
+
+        // consume endif
+        let end_token = self.peek(0);
+        if end_token.token_type != TokenType::EndIf {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected 'endif' after if statement".to_string(),
+                hint: Some("IF statements must be closed with ENDIF".to_string()),
+                line: end_token.line,
+                column: end_token.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+
+        let condition = super::ast::Expr::Binary(BinaryExpr {
+            left: Box::new(condition),
+            operator: TokenType::Equal,
+            right: Box::new(Ast::Identifier("true".to_string())),
+        });
+
+        let then_statements: Result<Vec<Stmt>, CPSError> = then_branch.into_iter().map(|a| match a {
+            Ast::Stmt(s) => Ok(s),
+            _ => Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected statement in then branch".to_string(),
+                hint: Some("IF statement body must contain valid statements".to_string()),
+                line: if_token.line,
+                column: if_token.column,
+                source: Some(self.source.clone()),
+            }),
+        }).collect();
+
+        let else_statements: Option<Result<Vec<Stmt>, CPSError>> = else_branch.map(|branch| {
+            branch.into_iter().map(|a| match a {
+                Ast::Stmt(s) => Ok(s),
+                _ => Err(CPSError {
+                    error_type: ErrorType::Syntax,
+                    message: "Expected statement in else branch".to_string(),
+                    hint: Some("ELSE statement body must contain valid statements".to_string()),
+                    line: if_token.line,
+                    column: if_token.column,
+                    source: Some(self.source.clone()),
+                }),
+            }).collect()
+        });
+
+        Ok(Ast::Stmt(Stmt::If {
+            condition: Box::new(condition),
+            then_branch: super::ast::BlockStmt { 
+                statements: then_statements?
+            },
+            else_branch: match else_statements {
+                Some(result) => Some(super::ast::BlockStmt { 
+                    statements: result?
+                }),
+                None => None,
+            },
+        }))
+    }
+
 }
 

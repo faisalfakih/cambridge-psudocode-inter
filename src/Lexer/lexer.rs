@@ -1,6 +1,8 @@
 use crate::errortype::{CPSError, ErrorType};
 use std::collections::HashMap;
 
+// TODO: Add error when user types a keyword which hasn't been implemented yet.
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TokenType {
     // KEYWORDS
