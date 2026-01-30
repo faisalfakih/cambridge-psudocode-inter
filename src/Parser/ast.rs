@@ -55,11 +55,30 @@ pub enum Stmt {
     Input { identifier: String }, 
     Output { target: Expr },
     Block(BlockStmt),
+    Procedure {
+        name: String,
+        parameters: Vec<(String, Type)>,
+        body: BlockStmt,
+    },
+    Function {
+        name: String,
+        parameters: Vec<(String, Type)>,
+        return_type: Type,
+        body: BlockStmt,
+    },
+    Return { value: Box<Expr> },
+    Call { name: String, arguments: Vec<Expr> },
 }
 
 #[derive(Debug, Clone)]
 pub struct BlockStmt {
     pub statements: Vec<Stmt>,
+}
+
+impl BlockStmt {
+    pub fn new(statements: Vec<Stmt>) -> Self {
+        BlockStmt { statements }
+    }
 }
 
 
@@ -167,6 +186,37 @@ impl Stmt {
                 }
                 result.push_str(&format!("{}END", indent_str));
                 result
+            }
+            Stmt::Procedure { name, parameters, body } => {
+                let mut result = format!("{}PROCEDURE {}(", indent_str, name);
+                let params: Vec<String> = parameters.iter().map(|(n, t)| format!("{}: {:?}", n, t)).collect();
+                result.push_str(&params.join(", "));
+                result.push_str(")\n");
+                for stmt in &body.statements {
+                    result.push_str(&stmt.to_prefix(indent + 1));
+                    result.push('\n');
+                }
+                result.push_str(&format!("{}ENDPROCEDURE", indent_str));
+                result
+            }
+            Stmt::Function { name, parameters, return_type, body } => {
+                let mut result = format!("{}FUNCTION {}(", indent_str, name);
+                let params: Vec<String> = parameters.iter().map(|(n, t)| format!("{}: {:?}", n, t)).collect();
+                result.push_str(&params.join(", "));
+                result.push_str(&format!(") : {:?}\n", return_type));
+                for stmt in &body.statements {
+                    result.push_str(&stmt.to_prefix(indent + 1));
+                    result.push('\n');
+                }
+                result.push_str(&format!("{}ENDFUNCTION", indent_str));
+                result
+            }
+            Stmt::Call { name, arguments } => {
+                let args: Vec<String> = arguments.iter().map(|arg| arg.to_prefix()).collect();
+                format!("{}CALL {}({})", indent_str, name, args.join(", "))
+            }
+            Stmt::Return { value } => {
+                format!("{}RETURN {:?}", indent_str, *value)
             }
         }
     }

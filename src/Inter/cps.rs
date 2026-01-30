@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 use crate::errortype::CPSError;
+use crate::Parser::ast::{BlockStmt, Stmt};
 
 
 #[derive(Clone, Debug, PartialEq)]
@@ -12,6 +13,7 @@ pub enum Type {
     String,
     Boolean,
     Char,
+    Function,
     Array(Box<Type>, usize),
     Record(String), 
     Enum(String),
@@ -27,9 +29,17 @@ pub enum Value {
     Char(char),
     Array(Vec<Value>),
     Identifier(String),
+    Function(Function)
     // Record(HashMap<String, Value>),
     // Enum { type_name: String, variant: String },
     // Null,  
+}
+
+#[derive(Clone, Debug)]
+pub struct Function {
+    pub parameters: Vec<(String, Type)>,
+    pub return_type: Option<Type>,
+    pub body: BlockStmt
 }
 
 
@@ -97,6 +107,7 @@ impl Environment {
                 Value::Char(_) => Type::Char,
                 Value::Array(_) => Type::Array(Box::new(Type::Integer), 0), // Placeholder
                 Value::Identifier(_) => Type::String, // Placeholder
+                Value::Function(_) => Type::Function,
             };
             return Ok(var_type);
         }

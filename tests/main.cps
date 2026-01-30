@@ -1,13 +1,6 @@
-DECLARE Start : INTEGER
-DECLARE End : INTEGER
+PROCEDURE test(a : STRING, b: STRING)
+    PRINT a
+    PRINT b
+ENDPROCEDURE
 
-PRINT "Enter a start"
-INPUT Start
-PRINT "Enter an end"
-INPUT End
-
-
-FOR Idx <- Start TO End
-    PRINT Idx
-NEXT Idx
-
+CALL test("hello world", "another world")

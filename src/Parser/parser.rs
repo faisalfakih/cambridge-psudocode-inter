@@ -72,6 +72,22 @@ impl Parser {
         peek
     }
 
+
+    fn ast_to_expr(&self, ast: Ast) -> Result<Expr, CPSError> {
+        match ast {
+            Ast::Expression(e) => Ok(e),
+            Ast::Identifier(id) => Ok(Expr::Literal(Value::Identifier(id))),
+            _ => Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected an expression".to_string(),
+                hint: Some("Make sure to provide a valid expression".to_string()),
+                line: 0,
+                column: 0,
+                source: Some(self.source.clone()),
+            }),
+        }
+    }
+
     fn is_terminator(&self, token_type: TokenType) -> bool {
         !matches!(token_type, 
             TokenType::Plus |
@@ -235,6 +251,10 @@ impl Parser {
                 TokenType::Declare => self.parse_declaration(),
                 TokenType::Identifier => self.parse_assignment(),
                 TokenType::For => self.parse_for_statement(),
+                TokenType::Procedure => self.parse_procedure(),
+                TokenType::Function => self.parse_function(),
+                TokenType::Return => self.parse_return(),
+                TokenType::Call => self.parse_call(),
                 // terminate if it leaves the scope
                 TokenType::Eof | TokenType::EndIf | TokenType::EndCase | TokenType::EndType | TokenType::Else | TokenType::Next
                     | TokenType::EndClass | TokenType::EndWhile | TokenType::EndFunction | TokenType::EndProcedure => break,
@@ -617,4 +637,371 @@ impl Parser {
 
         Ok(Ast::Stmt(Stmt::Assignment { identifier: identifier.lexeme, value: Box::new(value) }))
     }
+
+    fn parse_procedure(&mut self) -> Result<Ast, CPSError> {
+        let procedure_token = self.advance(); // consume 'procedure'
+        let identifier_token = self.advance();
+        if identifier_token.token_type != TokenType::Identifier {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected an identifier after 'PROCEDURE'".to_string(),
+                hint: Some("PROCEDURE must be followed by a valid name".to_string()),
+                line: identifier_token.line,
+                column: identifier_token.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let open_paren = self.advance();
+        if open_paren.token_type != TokenType::LParen {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected '(' after procedure name".to_string(),
+                hint: Some("PROCEDURE parameters must be enclosed in parentheses".to_string()),
+                line: open_paren.line,
+                column: open_paren.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let mut parameters: Vec<(String, Type)> = Vec::new();
+
+        while self.peek(0).token_type != TokenType::RParen {
+            // go through the identifier : type pairs
+            let param_identifier = self.advance();
+            if param_identifier.token_type != TokenType::Identifier {
+                return Err(CPSError {
+                    error_type: ErrorType::Syntax,
+                    message: "Expected parameter name in procedure declaration".to_string(),
+                    hint: Some("Procedure parameters must have valid names".to_string()),
+                    line: param_identifier.line,
+                    column: param_identifier.column,
+                    source: Some(self.source.clone()),
+                });
+            }
+
+            let colon_token = self.advance();
+            if colon_token.token_type != TokenType::Colon {
+                return Err(CPSError {
+                    error_type: ErrorType::Syntax,
+                    message: "Expected ':' after parameter name".to_string(),
+                    hint: Some("Parameter name must be followed by its type".to_string()),
+                    line: colon_token.line,
+                    column: colon_token.column,
+                    source: Some(self.source.clone()),
+                });
+            }
+
+            let type_token = self.advance();
+            let param_type = match type_token.token_type {
+                TokenType::Integer => Type::Integer,
+                TokenType::Real => Type::Real,
+                TokenType::String => Type::String,
+                TokenType::Char => Type::Char,
+                TokenType::Boolean => Type::Boolean,
+                _ => {
+                    return Err(CPSError {
+                        error_type: ErrorType::Syntax,
+                        message: "Expected a valid data type for parameter".to_string(),
+                        hint: None,
+                        line: type_token.line,
+                        column: type_token.column,
+                        source: Some(self.source.clone()),
+                    });
+                }
+            };
+            parameters.push((param_identifier.lexeme, param_type));
+
+            // check for comma after 
+            if self.peek(0).token_type == TokenType::Comma {
+                self.advance(); // consume comma
+            } else {
+                break;
+            }
+
+        }
+
+        let close_paren = self.advance();
+        if close_paren.token_type != TokenType::RParen {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected ')' after procedure parameters".to_string(),
+                hint: Some("PROCEDURE parameters must be enclosed in parentheses".to_string()),
+                line: close_paren.line,
+                column: close_paren.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let body_statements = self.parse_statements()?;
+        let body_statements: Result<Vec<Stmt>, CPSError> = body_statements.into_iter().map(|a| match a {
+            Ast::Stmt(s) => Ok(s),
+            _ => Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected statement in procedure body".to_string(),
+                hint: Some("PROCEDURE body must contain valid statements".to_string()),
+                line: procedure_token.line,
+                column: procedure_token.column,
+                source: Some(self.source.clone()),
+            }),
+        }).collect();
+        // consume endprocedure
+        let end_token = self.advance();
+        if end_token.token_type != TokenType::EndProcedure {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected 'ENDPROCEDURE' after procedure body".to_string(),
+                hint: Some("PROCEDURE must be closed with ENDPROCEDURE".to_string()),
+                line: end_token.line,
+                column: end_token.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        Ok(Ast::Stmt(Stmt::Procedure {
+            name: identifier_token.lexeme,
+            parameters,
+            body: BlockStmt {
+                statements: body_statements?,
+            },
+        }) )
+    }
+
+    fn parse_function(&mut self) -> Result<Ast, CPSError> {
+        let function_token = self.advance(); // consume 'function'
+        let identifier_token = self.advance();
+        if identifier_token.token_type != TokenType::Identifier {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected an identifier after 'FUNCTION'".to_string(),
+                hint: Some("FUNCTION must be followed by a valid name".to_string()),
+                line: identifier_token.line,
+                column: identifier_token.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let open_paren = self.advance();
+        if open_paren.token_type != TokenType::LParen {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected '(' after function name".to_string(),
+                hint: Some("FUNCTION parameters must be enclosed in parentheses".to_string()),
+                line: open_paren.line,
+                column: open_paren.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let mut parameters: Vec<(String, Type)> = Vec::new();
+
+        while self.peek(0).token_type != TokenType::RParen {
+            // go through the identifier : type pairs
+            let param_identifier = self.advance();
+            if param_identifier.token_type != TokenType::Identifier {
+                return Err(CPSError {
+                    error_type: ErrorType::Syntax,
+                    message: "Expected parameter name in function declaration".to_string(),
+                    hint: Some("Function parameters must have valid names".to_string()),
+                    line: param_identifier.line,
+                    column: param_identifier.column,
+                    source: Some(self.source.clone()),
+                });
+            }
+
+            let colon_token = self.advance();
+            if colon_token.token_type != TokenType::Colon {
+                return Err(CPSError {
+                    error_type: ErrorType::Syntax,
+                    message: "Expected ':' after parameter name".to_string(),
+                    hint: Some("Parameter name must be followed by its type".to_string()),
+                    line: colon_token.line,
+                    column: colon_token.column,
+                    source: Some(self.source.clone()),
+                });
+            }
+
+            let type_token = self.advance();
+            let param_type = match type_token.token_type {
+                TokenType::Integer => Type::Integer,
+                TokenType::Real => Type::Real,
+                TokenType::String => Type::String,
+                TokenType::Char => Type::Char,
+                TokenType::Boolean => Type::Boolean,
+                _ => {
+                    return Err(CPSError {
+                        error_type: ErrorType::Syntax,
+                        message: "Expected a valid data type for parameter".to_string(),
+                        hint: None,
+                        line: type_token.line,
+                        column: type_token.column,
+                        source: Some(self.source.clone()),
+                    });
+                }
+            };
+            parameters.push((param_identifier.lexeme, param_type));
+            // check for comma after 
+            if self.peek(0).token_type == TokenType::Comma {
+                self.advance(); // consume comma
+            } else {
+                break;
+            }
+        }
+
+        let close_paren = self.advance();
+        if close_paren.token_type != TokenType::RParen {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected ')' after function parameters".to_string(),
+                hint: Some("FUNCTION parameters must be enclosed in parentheses".to_string()),
+                line: close_paren.line,
+                column: close_paren.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let returns = self.advance();
+        if returns.token_type != TokenType::Returns {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected 'RETURNS' after function parameters".to_string(),
+                hint: Some("FUNCTION must specify a return type using RETURNS".to_string()),
+                line: returns.line,
+                column: returns.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let return_type_token = self.advance();
+        let return_type = match return_type_token.token_type {
+            TokenType::Integer => Type::Integer,
+            TokenType::Real => Type::Real,
+            TokenType::String => Type::String,
+            TokenType::Char => Type::Char,
+            TokenType::Boolean => Type::Boolean,
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Syntax,
+                    message: "Expected a valid return data type for function".to_string(),
+                    hint: None,
+                    line: return_type_token.line,
+                    column: return_type_token.column,
+                    source: Some(self.source.clone()),
+                });
+            }
+        };
+
+        let body_statements = self.parse_statements()?;
+        let body_statements: Result<Vec<Stmt>, CPSError> = body_statements.into_iter().map(|a| match a {
+            Ast::Stmt(s) => Ok(s),
+            _ => Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected statement in procedure body".to_string(),
+                hint: Some("PROCEDURE body must contain valid statements".to_string()),
+                line: function_token.line,
+                column: function_token.column,
+                source: Some(self.source.clone()),
+            }),
+        }).collect();
+        // consume endprocedure
+        let end_token = self.advance();
+        if end_token.token_type != TokenType::EndFunction {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected 'ENDFUNCTION' after procedure body".to_string(),
+                hint: Some("PROCEDURE must be closed with ENDPROCEDURE".to_string()),
+                line: end_token.line,
+                column: end_token.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        Ok(Ast::Stmt(Stmt::Function {
+            name: identifier_token.lexeme,
+            parameters,
+            body: BlockStmt {
+                statements: body_statements?,
+            },
+            return_type,
+        }) )
+    }
+
+    fn parse_return(&mut self) -> Result<Ast, CPSError> {
+        let return_token = self.advance(); // consume 'return'
+        let expr = self.parse_expr(0)?;
+
+        match expr {
+            Ast::Expression(e) => Ok(Ast::Stmt(Stmt::Return { value: Box::new(e) }) ),
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Syntax,
+                    message: "Expected an expression after RETURN".to_string(),
+                    hint: Some("RETURN must be followed by a valid expression".to_string()),
+                    line: return_token.line,
+                    column: return_token.column,
+                    source: Some(self.source.clone()),
+                });
+            }
+        }
+
+
+    }
+
+    fn parse_call(&mut self) -> Result<Ast, CPSError> {
+        let call_token = self.advance(); // consume 'call'
+        let identifier_token = self.advance();
+        if identifier_token.token_type != TokenType::Identifier {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected an identifier after 'CALL'".to_string(),
+                hint: Some("CALL must be followed by a valid function or procedure name".to_string()),
+                line: identifier_token.line,
+                column: identifier_token.column,
+                source: Some(self.source.clone()),
+            })
+        }
+        
+        // find arguments
+        let open_bracket = self.advance();
+        if open_bracket.token_type != TokenType::LParen {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected '(' after function/procedure name".to_string(),
+                hint: Some("CALL arguments must be enclosed in parentheses".to_string()),
+                line: open_bracket.line,
+                column: open_bracket.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let mut arguments: Vec<Expr> = Vec::new();
+        while self.peek(0).token_type != TokenType::RParen {
+            let arg = self.parse_expr(0)?;
+            arguments.push(self.ast_to_expr(arg)?);
+
+            // check for comma after 
+            if self.peek(0).token_type == TokenType::Comma {
+                self.advance(); // consume comma
+            } else {
+                break;
+            }
+        }
+        let close_bracket = self.advance();
+        if close_bracket.token_type != TokenType::RParen {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected ')' after function/procedure arguments".to_string(),
+                hint: Some("CALL arguments must be enclosed in parentheses".to_string()),
+                line: close_bracket.line,
+                column: close_bracket.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        Ok(Ast::Stmt(Stmt::Call { name: identifier_token.lexeme, arguments }) )
+    }
+
+
+
+
 }

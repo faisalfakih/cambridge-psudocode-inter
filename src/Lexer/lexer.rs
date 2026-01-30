@@ -103,6 +103,8 @@ pub enum TokenType {
     Colon,
     LParen,
     RParen,
+
+    Comma,
 }
 
 
@@ -383,6 +385,11 @@ impl Lexer {
                     self.column += 1;
                     return Ok(Token::new(")".to_string(), TokenType::RParen, self.line, self.column - 1));
                 },
+                ',' => {
+                    self.position += 1;
+                    self.column += 1;
+                    return Ok(Token::new(",".to_string(), TokenType::Comma, self.line, self.column - 1));
+                }
                 _ if c.is_alphabetic() || c == '_' => return self.handle_identifier(),
                 _ if c.is_digit(10) =>  return self.handle_number_literal(),
                 _ => return Err(CPSError {

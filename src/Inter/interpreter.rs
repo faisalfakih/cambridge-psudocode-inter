@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::errortype::{CPSError, ErrorType};
-use crate::Inter::cps::{Environment, Type, Value};
+use crate::Inter::cps::{Environment, Function, Type, Value};
 use crate::Lexer::lexer::TokenType;
 use crate::Parser::ast::{Ast, BinaryExpr, BlockStmt, Expr, Stmt};
 
@@ -73,6 +73,8 @@ impl Interpreter {
             Stmt::Input { identifier } => self.evaluate_input_stmt(identifier),
             Stmt::If { condition, then_branch, else_branch } => self.evaluate_if_stmt(condition, then_branch, else_branch),
             Stmt::While { condition, body } => self.evaluate_while_stmt(condition, body),
+            Stmt::Procedure { name, parameters, body } => self.evaluate_procedure(name, parameters, body),
+            Stmt::Call { name, arguments } => self.evaluate_call(name, arguments),
             Stmt::Block(block) => {
                 for stmt in &block.statements {
                     self.evaluate_stmt(stmt)?;
@@ -130,7 +132,17 @@ impl Interpreter {
                     column: 0,
                     source: None,
                 });
-            }
+            },
+            Value::Function(_) => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Cannot assign function to '{}'", identifier),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            },
         };
 
         let converted_val = match (&val, &expected_type, &actual_type) {
@@ -404,6 +416,80 @@ impl Interpreter {
             .borrow_mut()
             .define(identifier.to_owned(), inital_value);
         Ok(())
+    }
+
+    fn evaluate_procedure(&mut self, identifier: &String, parameters: &Vec<(String, Type)>, body: &BlockStmt) -> Result<(), CPSError> {
+        // self.evaluate_declaration_stmt(identifier, &Type::Function)?;
+
+        let function_value = Value::Function(Function {
+            parameters: parameters.to_owned(),
+            body: body.to_owned(),
+            return_type: None,
+        });
+
+        self.current_env
+            .borrow_mut()
+            .define(identifier.to_owned(), function_value.clone());
+
+
+        // self.evaluate_assignment_stmt(
+        //     identifier, 
+        //     &Ast::Expression(Expr::Literal(function_value))
+        // )?;
+
+        self.current_env.borrow_mut().set(
+            identifier, 
+            function_value
+        )?;
+
+
+        Ok(())
+    }
+
+    fn evaluate_call(&mut self, identifier: &String, arguments: &Vec<Expr>) -> Result<(), CPSError> {
+        let func_value = match self.current_env.borrow().get(identifier) {
+            Some(Value::Function(func)) => func,
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Undefined function: {}", identifier),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        };
+
+        if func_value.parameters.len() != arguments.len() {
+            return Err(CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!("Function '{}' expected {} arguments, got {}", identifier, func_value.parameters.len(), arguments.len()),
+                hint: None,
+                line: 0,
+                column: 0,
+                source: None,
+            });
+        }
+
+        let new_env = Environment::new_child(Rc::clone(&self.current_env));
+
+        for (i, (param_name, _)) in func_value.parameters.iter().enumerate() {
+            let arg_value = self.evaluate_expr(&arguments[i])?;
+            new_env.borrow_mut().define(param_name.to_owned(), arg_value);
+        }
+
+        let previous_env = Rc::clone(&self.current_env);
+        self.current_env = new_env;
+
+        for stmt in &func_value.body.statements {
+            self.evaluate_stmt(stmt)?;
+        }
+
+        self.current_env = previous_env;
+
+        Ok(())
+
     }
 
 
