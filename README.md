@@ -26,6 +26,7 @@ This interpreter is designed to help students and educators work with Cambridge 
   - `IF...THEN...ELSE...ENDIF` conditionals
   - `WHILE...ENDWHILE` loops
   - `FOR...TO...NEXT` loops with integer iteration
+  - `FUNCTIONS` and `PROCEDURES`
 
 - **Operators**
   - Arithmetic: `+`, `-`, `*`, `/`, `DIV`, `MOD`, `^` (power)
