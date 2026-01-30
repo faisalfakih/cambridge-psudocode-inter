@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use crate::Inter::cps::{Type, Value};
 use crate::Lexer::{lexer::Token, lexer::TokenType};
 use crate::errortype::{CPSError, ErrorType};
-use crate::Parser::ast::{BinaryExpr};
+use crate::Parser::ast::{BinaryExpr, BlockStmt};
 use super::ast::{Ast, Operator, Position, Associativity, Precedence, Stmt};
 
 
@@ -112,6 +113,19 @@ impl Parser {
                         source: Some(self.source.clone()),
                     })
             }
+            TokenType::StringLiteral => {
+                self.advance();
+                let string_value = token.lexeme.trim_matches('"').to_string();
+                // Wrap in Expression
+                Ok(Ast::Expression(super::ast::Expr::Literal(Value::String(string_value))))
+            }
+
+            TokenType::CharLiteral => {
+                self.advance();
+                let ch = token.lexeme.chars().next().unwrap_or('\0');
+                Ok(Ast::Expression(super::ast::Expr::Literal(Value::Char(ch))))
+            }
+
             TokenType::Identifier => {
                 self.advance();
                 Ok(Ast::Identifier(token.lexeme.clone()))
@@ -207,8 +221,11 @@ impl Parser {
             let token = self.peek(0);
             let statement = match token.token_type {
                 TokenType::If => self.parse_if_statement(),
+                TokenType::While => self.parse_while_statement(),
                 TokenType::Output => self.parse_output(),
-                TokenType::NumberLiteral => self.parse_top_expr(),
+                TokenType::Declare => self.parse_declaration(),
+                TokenType::Identifier => self.parse_assignment(),
+                // TokenType::NumberLiteral => self.parse_top_expr(),
                 // terminate if it leaves the scope
                 TokenType::Eof | TokenType::EndIf | TokenType::EndCase | TokenType::EndType | TokenType::Else
                     | TokenType::EndClass | TokenType::EndWhile | TokenType::EndFunction | TokenType::EndProcedure => break,
@@ -237,11 +254,13 @@ impl Parser {
         let output_token = self.advance();
         let expr = match self.parse_expr(0)? {
             Ast::Expression(e) => e,
+            Ast::Number(n) => super::ast::Expr::Literal(Value::Real(n)),
+            Ast::Identifier(id) => super::ast::Expr::Literal(Value::Identifier(id)),
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Syntax,
-                    message: "Expected an expression after OUTPUT".to_string(),
-                    hint: Some("OUTPUT must be followed by a valid expression".to_string()),
+                    message: format!("Expected an expression after {}", output_token.lexeme),
+                    hint: Some(format!("{} must be followed by a valid expression", output_token.lexeme)),
                     line: output_token.line,
                     column: output_token.column,
                     source: Some(self.source.clone()),
@@ -259,11 +278,17 @@ impl Parser {
         // consume the 'THEN'
         let then = self.peek(0);
         if then.token_type != TokenType::Then {
+            let line;
+            if then.line == 0 {
+                line = 0;
+            } else {
+                line = then.line - 1;
+            }
             return Err(CPSError {
                 error_type: ErrorType::Syntax,
-                message: "Expected 'then' after if condition".to_string(),
+                message: "Expected 'THEN' after if condition".to_string(),
                 hint: Some("IF statements must have a THEN clause".to_string()),
-                line: then.line,
+                line: line,
                 column: then.column,
                 source: Some(self.source.clone()),
             });
@@ -285,7 +310,7 @@ impl Parser {
         if end_token.token_type != TokenType::EndIf {
             return Err(CPSError {
                 error_type: ErrorType::Syntax,
-                message: "Expected 'endif' after if statement".to_string(),
+                message: "Expected 'ENDIF' after if statement".to_string(),
                 hint: Some("IF statements must be closed with ENDIF".to_string()),
                 line: end_token.line,
                 column: end_token.column,
@@ -328,16 +353,115 @@ impl Parser {
 
         Ok(Ast::Stmt(Stmt::If {
             condition: Box::new(condition),
-            then_branch: super::ast::BlockStmt { 
+            then_branch: BlockStmt { 
                 statements: then_statements?
             },
             else_branch: match else_statements {
-                Some(result) => Some(super::ast::BlockStmt { 
+                Some(result) => Some(BlockStmt { 
                     statements: result?
                 }),
                 None => None,
             },
         }))
+    }
+
+    fn parse_while_statement(&mut self) -> Result<Ast, CPSError> {
+        let while_token = self.advance(); // consume 'while'
+        let condition = self.parse_expr(0)?;
+
+        let body_statements = self.parse_statements()?;
+
+        // consume endwhile
+        let end_token = self.peek(0);
+        if end_token.token_type != TokenType::EndWhile {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected 'ENDWHILE' after while statement".to_string(),
+                hint: Some("WHILE statements must be closed with ENDWHILE".to_string()),
+                line: end_token.line,
+                column: end_token.column,
+                source: Some(self.source.clone()),
+            });
+        }
+        self.advance(); // consume 'endwhile'
+
+        let condition = super::ast::Expr::Binary(BinaryExpr {
+            left: Box::new(condition),
+            operator: TokenType::Equal,
+            right: Box::new(Ast::Identifier("true".to_string())),
+        });
+
+        let body_statements: Result<Vec<Stmt>, CPSError> = body_statements.into_iter().map(|a| match a {
+            Ast::Stmt(s) => Ok(s),
+            _ => Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected statement in while body".to_string(),
+                hint: Some("WHILE statement body must contain valid statements".to_string()),
+                line: while_token.line,
+                column: while_token.column,
+                source: Some(self.source.clone()),
+            }),
+        }).collect();
+
+        Ok(Ast::Stmt(Stmt::While {
+            condition: Box::new(condition),
+            body: BlockStmt {
+                statements: body_statements?,
+            },
+        }))
+    }
+
+    fn parse_declaration(&mut self) -> Result<Ast, CPSError> {
+        self.advance();
+        // expect identifier 
+        let identifier = self.advance();
+        if identifier.token_type != TokenType::Identifier {
+            return Err(CPSError { error_type: ErrorType::Syntax, 
+                message: "Expected an identifier after declare".to_string(), hint: Some("Make sure to write a variable name after DECLARE".to_string()), 
+                line: identifier.line, column: identifier.column, source: Some(self.source.clone()) });
+        }
+
+        // consume arrow
+        let colon = self.advance();
+        if colon.token_type != TokenType::Colon {
+            return Err(CPSError { error_type: ErrorType::Syntax, 
+                message: "Expected a colon after the identifier".to_string(), hint: Some("Make sure to use a colon after the variable name and before the data type".to_string()), 
+                line: identifier.line, column: identifier.column, source: Some(self.source.clone()) });
+        }
+
+        let type_token = self.advance();
+
+        let data_type = match type_token.token_type {
+            TokenType::Integer => Type::Integer,
+            TokenType::Real => Type::Real,
+            TokenType::String => Type::String,
+            TokenType::Char => Type::Char,
+            TokenType::Boolean => Type::Boolean, 
+            _ => {
+                return Err(CPSError { error_type: ErrorType::Syntax, 
+                    message: "Expected a valid data type after the colon".to_string(), hint: None, 
+                    line: type_token.line, column: type_token.column, source: Some(self.source.clone())
+                });
+            }
+        };
+
+        
+        Ok(Ast::Stmt(Stmt::Decleration { identifier: identifier.lexeme, type_: data_type }))
+    }
+
+    fn parse_assignment(&mut self) -> Result<Ast, CPSError> {
+        let identifier = self.advance();
+
+        let assign_token = self.advance();
+        if assign_token.token_type != TokenType::Arrow {
+            return Err(CPSError { error_type: ErrorType::Syntax, 
+                message: "Expected '<-' in assignment".to_string(), hint: None, 
+                line: assign_token.line, column: assign_token.column, source: Some(self.source.clone()) });
+        }
+
+        let value = self.parse_expr(0)?;
+
+        Ok(Ast::Stmt(Stmt::Assignment { identifier: identifier.lexeme, value: Box::new(value) }))
     }
 
 }

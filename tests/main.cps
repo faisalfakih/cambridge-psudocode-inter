@@ -1,5 +1,3 @@
-IF 1 + 1 = 2 THEN
-    PRINT 1 + 1
-ELSE 
-    PRINT 1 + 1
-ENDIF
+DECLARE HottestManInTheWorld : STRING
+HottestManInTheWorld <- "Omar"
+PRINT HottestManInTheWorld

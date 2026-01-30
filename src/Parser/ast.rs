@@ -1,4 +1,4 @@
-use crate::Lexer::lexer::TokenType;
+use crate::{Inter::cps::{Type, Value}, Lexer::lexer::TokenType};
 
 #[derive(Debug, Clone)]
 pub struct Operator {
@@ -40,17 +40,11 @@ pub enum Ast {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Binary(BinaryExpr),
+    Literal(Value),
 }
 
 
-#[derive(Debug, Clone)]
-pub enum Type {
-    Integer,
-    Real,
-    Char,
-    String,
-    Boolean,
-}
+
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
@@ -69,49 +63,7 @@ pub struct BlockStmt {
 }
 
 
-// impl Ast {
-//     fn to_prefix(&self) -> String {
-//         match self {
-//             Ast::Number(n) => n.to_string(),
-//             Ast::Identifier(name) => name.clone(),
-//             Ast::Stmt(_) => format!("incomplete"),
-//             Ast::Expression(expression) => {
-//                 match expression {
-//                     Expr::Binary(binary) => {
-//                         let op_str = match binary.operator {
-//                             TokenType::Plus => "+",
-//                             TokenType::Minus => "-",
-//                             TokenType::Asterisk => "*",
-//                             TokenType::ForwardSlash => "/",
-//                             TokenType::Caret => "^",
-//                             TokenType::And => "AND",
-//                             TokenType::Or => "OR",
-//                             TokenType::Div => "DIV",
-//                             TokenType::Mod => "MOD",
-//                             TokenType::Equal => "=",
-//                             TokenType::NotEqual => "<>",
-//                             TokenType::LessThan => "<",
-//                             TokenType::LessEqual => "<=",
-//                             TokenType::GreaterThan => ">",
-//                             TokenType::GreaterEqual => ">=",
-//                             _ => "?",
-//                         };
-//                         format!(
-//                             "({} {} {})",
-//                             op_str,
-//                             binary.left.to_prefix(),
-//                             binary.right.to_prefix()
-//                         )
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//     
-//     pub fn print_prefix(&self) {
-//         println!("{}", self.to_prefix());
-//     }
-// }
+
 
 impl Expr {
     fn to_prefix(&self) -> String {
@@ -141,6 +93,16 @@ impl Expr {
                     binary.left.to_prefix(),
                     binary.right.to_prefix()
                 )
+            }
+            Expr::Literal(value) => {
+                match value {
+                    Value::Integer(n) => n.to_string(),
+                    Value::Real(f) => f.to_string(),
+                    Value::String(s) => format!("\"{}\"", s),
+                    Value::Boolean(b) => b.to_string(),
+                    Value::Char(c) => format!("'{}'", c),
+                    _ => "?".to_string(),
+                }
             }
         }
     }
