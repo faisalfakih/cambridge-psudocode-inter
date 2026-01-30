@@ -74,7 +74,11 @@ impl Interpreter {
             Stmt::If { condition, then_branch, else_branch } => self.evaluate_if_stmt(condition, then_branch, else_branch),
             Stmt::While { condition, body } => self.evaluate_while_stmt(condition, body),
             Stmt::Procedure { name, parameters, body } => self.evaluate_procedure(name, parameters, body),
-            Stmt::Call { name, arguments } => self.evaluate_call(name, arguments),
+            Stmt::Function { name, parameters, return_type, body } => self.evaluate_function(name, parameters, return_type.to_owned(), body),
+            Stmt::Call { name, arguments } => {
+                self.evaluate_call(name, arguments)?;
+                Ok(())
+            },
             Stmt::Block(block) => {
                 for stmt in &block.statements {
                     self.evaluate_stmt(stmt)?;
@@ -446,7 +450,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn evaluate_call(&mut self, identifier: &String, arguments: &Vec<Expr>) -> Result<(), CPSError> {
+    fn evaluate_call(&mut self, identifier: &String, arguments: &Vec<Expr>) -> Result<Value, CPSError> {
         let func_value = match self.current_env.borrow().get(identifier) {
             Some(Value::Function(func)) => func,
             _ => {
@@ -474,22 +478,101 @@ impl Interpreter {
 
         let new_env = Environment::new_child(Rc::clone(&self.current_env));
 
-        for (i, (param_name, _)) in func_value.parameters.iter().enumerate() {
+        for (i, (param_name, param_type)) in func_value.parameters.iter().enumerate() {
             let arg_value = self.evaluate_expr(&arguments[i])?;
-            new_env.borrow_mut().define(param_name.to_owned(), arg_value);
+
+            if !self.check_if_value_can_be_converted(&arg_value, param_type) {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!(
+                        "Type mismatch for parameter '{}': expected {:?}, got {:?}",
+                        param_name, param_type, arg_value
+                    ),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+            new_env.borrow_mut().define(param_name.to_owned(), arg_value.clone());
         }
 
         let previous_env = Rc::clone(&self.current_env);
         self.current_env = new_env;
-
+        let mut return_value = None;
         for stmt in &func_value.body.statements {
-            self.evaluate_stmt(stmt)?;
+            match stmt {
+                Stmt::Return { value } => {
+                    return_value = Some(self.evaluate_expr(value)?);
+                    break; 
+                }
+                _ => {
+                    self.evaluate_stmt(stmt)?;
+                }
+            }
         }
 
         self.current_env = previous_env;
 
-        Ok(())
+        match (&return_value, &func_value.return_type) {
+            (Some(val), Some(expected_type)) => {
+                if !self.check_if_value_can_be_converted(val, expected_type) {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!(
+                            "Function '{}' return type mismatch: expected {:?}, got {:?}",
+                            identifier, expected_type, val
+                        ),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+                Ok(val.clone())
+            }
+            (None, Some(expected_type)) => {
+                Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!(
+                        "Function '{}' must return a value of type {:?}",
+                        identifier, expected_type
+                    ),
+                    hint: Some("Add a RETURN statement".to_string()),
+                    line: 0,
+                    column: 0,
+                    source: None,
+                })
+            }
+            (Some(_), None) => { // procedure return (error)
+                Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Procedure '{}' should not return a value", identifier),
+                    hint: Some("Use FUNCTION instead of PROCEDURE if you need to return a value".to_string()),
+                    line: 0,
+                    column: 0,
+                    source: None,
+                })
+            }
+            (None, None) => {
+                Ok(Value::Boolean(false)) // procedures return "void"
+            }
+        }
+    }
 
+
+    fn evaluate_function(&mut self, identifier: &String, parameters: &Vec<(String, Type)>, return_type: Type, body: &BlockStmt) -> Result<(), CPSError> {
+        let function_value = Value::Function(Function {
+            parameters: parameters.to_owned(),
+            body: body.to_owned(),
+            return_type: Some(return_type),
+        });
+
+        self.current_env
+            .borrow_mut()
+            .define(identifier.to_owned(), function_value.clone());
+
+        Ok(())
     }
 
 
@@ -497,6 +580,7 @@ impl Interpreter {
         match expression {
             Expr::Binary(expr) => self.evaluate_binary(expr),
             Expr::Literal(value) => self.evaluate_literal(value),
+            Expr::Call { name, arguments } => self.evaluate_call(name, arguments),
             // _ => {
             //     return Err(CPSError {
             //         error_type: ErrorType::Runtime,
@@ -919,5 +1003,24 @@ impl Interpreter {
         Ok(lit.clone())
     }
 
+
+    fn check_if_value_can_be_converted(&self, value: &Value, target_type: &Type) -> bool {
+        match (value, target_type) {
+            (Value::Integer(_), Type::Integer) => true,
+            (Value::Real(_), Type::Real) => true,
+            (Value::String(_), Type::String) => true,
+            (Value::Boolean(_), Type::Boolean) => true,
+            (Value::Char(_), Type::Char) => true,
+            (Value::Integer(_), Type::Real) => true,
+            (Value::Real(_), Type::Integer) => {
+                if let Value::Real(f) = value {
+                    f.fract() == 0.0
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        }
+    }
 
 }

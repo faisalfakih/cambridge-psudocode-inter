@@ -1,6 +1,4 @@
-PROCEDURE test(a : STRING, b: STRING)
-    PRINT a
-    PRINT b
-ENDPROCEDURE
-
-CALL test("hello world", "another world")
+FUNCTION add(a : INTEGER, b : INTEGER) RETURNS INTEGER
+    RETURN a + b
+ENDFUNCTION
+PRINT add(5, 2)

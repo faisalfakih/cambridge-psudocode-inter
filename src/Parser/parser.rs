@@ -154,8 +154,15 @@ impl Parser {
             }
 
             TokenType::Identifier => {
+                let name = token.lexeme.clone();
                 self.advance();
-                Ok(Ast::Identifier(token.lexeme.clone()))
+
+                if self.peek(0).token_type == TokenType::LParen { // check if its a function call
+                    self.parse_function_call_expr(name)
+                } else {
+                    Ok(Ast::Identifier(name))
+                }
+
             }
             TokenType::LParen => {
                 self.advance();
@@ -237,6 +244,54 @@ impl Parser {
         }
 
         Ok(lhs)
+    }
+
+    fn parse_function_call_expr(&mut self, name: String) -> Result<Ast, CPSError> {
+        let mut args = vec![];
+
+        // consume '('
+        let open_paren = self.advance();
+        if open_paren.token_type != TokenType::LParen {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected '(' after function name".to_string(),
+                hint: Some("Function arguments must be enclosed in parentheses".to_string()),
+                line: open_paren.line,
+                column: open_paren.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        while self.peek(0).token_type != TokenType::RParen {
+            let expr = self.parse_expr(0)?;
+            args.push(self.ast_to_expr(expr)?);
+
+            if self.peek(0).token_type == TokenType::Comma {
+                self.advance(); // consume comma
+            } else {
+                break;
+            }
+        }
+
+        // consume ')'
+        let close_paren = self.advance();
+        if close_paren.token_type != TokenType::RParen {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected ')' after function arguments".to_string(),
+                hint: Some("Function arguments must be enclosed in parentheses".to_string()),
+                line: close_paren.line,
+                column: close_paren.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+
+        Ok(Ast::Expression(Expr::Call {
+            name,
+            arguments: args,
+        }))
+
     }
 
     pub fn parse_statements(&mut self) -> Result<Vec<Ast>, CPSError> {
@@ -948,7 +1003,7 @@ impl Parser {
     }
 
     fn parse_call(&mut self) -> Result<Ast, CPSError> {
-        let call_token = self.advance(); // consume 'call'
+        self.advance(); // consume 'call'
         let identifier_token = self.advance();
         if identifier_token.token_type != TokenType::Identifier {
             return Err(CPSError {

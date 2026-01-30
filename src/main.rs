@@ -30,10 +30,10 @@ fn main() {
     let mut parser = parser::Parser::new(tokens, contents.to_owned()).clone();
     let res = parser.parse_statements();
     match res.clone() {
-        Ok(ast) => {
-            for a in ast.iter() {
-                a.print_prefix();
-            }
+        Ok(_ast) => {
+            // for a in ast.iter() {
+            //     a.print_prefix();
+            // }
             let mut interpreter = Inter::interpreter::Interpreter::new();
             match interpreter.interpret(res.clone().unwrap()) {
                 Ok(_) => {}

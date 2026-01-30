@@ -40,6 +40,7 @@ pub enum Ast {
 pub enum Expr {
     Binary(BinaryExpr),
     Literal(Value),
+    Call { name: String, arguments: Vec<Expr> },
 }
 
 
@@ -122,6 +123,10 @@ impl Expr {
                     Value::Char(c) => format!("'{}'", c),
                     _ => "?".to_string(),
                 }
+            }
+            Expr::Call { name, arguments } => {
+                let args: Vec<String> = arguments.iter().map(|arg| arg.to_prefix()).collect();
+                format!("CALL {}({})", name, args.join(", "))
             }
         }
     }
