@@ -20,7 +20,6 @@ This interpreter is designed to help students and educators work with Cambridge 
 - **Variable Operations**
   - `DECLARE` statements with type annotations
   - Assignment using `<-` operator
-  - Automatic type conversion (Real ↔ Integer where appropriate)
   - Proper variable scoping
 
 - **Control Structures**
