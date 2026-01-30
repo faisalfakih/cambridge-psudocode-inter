@@ -314,6 +314,8 @@ impl Lexer {
                             self.position += 1;
                             self.column += 1;
                         }
+                        self.position += 1;
+                        self.column += 1; // move past the newline
                         continue; // skip adding a token for the comment
                     }
                     self.position += 1;

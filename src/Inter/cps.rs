@@ -62,7 +62,9 @@ impl Environment {
 
         match &self.parent {
             Some(parent_rc) => parent_rc.borrow().get(name),
-            None => None,
+            None => {
+                None
+            },
         }
     }
 
@@ -74,6 +76,33 @@ impl Environment {
 
         match &self.parent {
             Some(parent_rc) => parent_rc.borrow_mut().set(name, value),
+            None => Err(CPSError {
+                error_type: crate::errortype::ErrorType::Runtime,
+                message: format!("Undefined variable '{}'", name),
+                hint: Some("Check if the variable is declared before use.".to_string()),
+                line: 0,
+                column: 0,
+                source: None,
+            }),
+        }
+    }
+
+    pub fn get_type(&mut self, name: &str) -> Result<Type, CPSError> {
+        if let Some(value) = self.bindings.get(name) {
+            let var_type = match value {
+                Value::Integer(_) => Type::Integer,
+                Value::Real(_) => Type::Real,
+                Value::String(_) => Type::String,
+                Value::Boolean(_) => Type::Boolean,
+                Value::Char(_) => Type::Char,
+                Value::Array(_) => Type::Array(Box::new(Type::Integer), 0), // Placeholder
+                Value::Identifier(_) => Type::String, // Placeholder
+            };
+            return Ok(var_type);
+        }
+
+        match &self.parent {
+            Some(parent_rc) => parent_rc.borrow_mut().get_type(name),
             None => Err(CPSError {
                 error_type: crate::errortype::ErrorType::Runtime,
                 message: format!("Undefined variable '{}'", name),

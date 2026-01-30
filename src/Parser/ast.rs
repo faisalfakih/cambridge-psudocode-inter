@@ -31,7 +31,6 @@ pub struct BinaryExpr {
 
 #[derive(Debug, Clone)]
 pub enum Ast {
-    Number(f64),
     Identifier(String),
     Expression(Expr),
     Stmt(Stmt)
@@ -50,11 +49,12 @@ pub enum Expr {
 pub enum Stmt {
     If { condition: Box<Expr>, then_branch: BlockStmt, else_branch: Option<BlockStmt> },
     While { condition: Box<Expr>, body: BlockStmt },
-    // For  -> DO LATER
+    For { identifier: String, start: Box<Expr>, end: Box<Expr>, body: BlockStmt },
     Assignment { identifier: String, value: Box<Ast> },
     Decleration { identifier: String, type_: Type},
-    Input { expr: Box<Ast> }, 
+    Input { identifier: String }, 
     Output { target: Expr },
+    Block(BlockStmt),
 }
 
 #[derive(Debug, Clone)]
@@ -138,17 +138,35 @@ impl Stmt {
                 result.push_str(&format!("{}ENDWHILE", indent_str));
                 result
             }
+            Stmt::For { identifier, start, end, body } => {
+                let mut result = format!("{}FOR {} = {} TO {}\n", indent_str, identifier, start.to_prefix(), end.to_prefix());
+                for stmt in &body.statements {
+                    result.push_str(&stmt.to_prefix(indent + 1));
+                    result.push('\n');
+                }
+                result.push_str(&format!("{}ENDFOR", indent_str));
+                result
+            }
             Stmt::Assignment { identifier, value } => {
                 format!("{}ASSIGN {} = {}", indent_str, identifier, value.to_prefix())
             }
             Stmt::Decleration { identifier, type_ } => {
                 format!("{}DECLARE {} : {:?}", indent_str, identifier, type_)
             }
-            Stmt::Input { expr } => {
-                format!("{}INPUT {}", indent_str, expr.to_prefix())
+            Stmt::Input { identifier } => {
+                format!("{}INPUT {}", indent_str, identifier)
             }
             Stmt::Output { target } => {
                 format!("{}OUTPUT {}", indent_str, target.to_prefix())
+            }
+            Stmt::Block(block) => {
+                let mut result = format!("{}BEGIN\n", indent_str);
+                for stmt in &block.statements {
+                    result.push_str(&stmt.to_prefix(indent + 1));
+                    result.push('\n');
+                }
+                result.push_str(&format!("{}END", indent_str));
+                result
             }
         }
     }
@@ -157,7 +175,6 @@ impl Stmt {
 impl Ast {
     fn to_prefix(&self) -> String {
         match self {
-            Ast::Number(n) => n.to_string(),
             Ast::Identifier(name) => name.clone(),
             Ast::Stmt(stmt) => stmt.to_prefix(0),
             Ast::Expression(expr) => expr.to_prefix(),

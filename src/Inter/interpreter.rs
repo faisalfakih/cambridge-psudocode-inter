@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::errortype::{CPSError, ErrorType};
 use crate::Inter::cps::{Environment, Type, Value};
 use crate::Lexer::lexer::TokenType;
-use crate::Parser::ast::{Ast, BinaryExpr, Expr, Stmt};
+use crate::Parser::ast::{Ast, BinaryExpr, BlockStmt, Expr, Stmt};
 
 
 #[derive(Debug, Clone)]
@@ -45,9 +45,6 @@ impl Interpreter {
                         }),
                     }
             },
-            Ast::Number(n) => {
-                Ok(Value::Real(n))
-            }
             Ast::Stmt(stmt) => {
                 match self.evaluate_stmt(&stmt) {
                     Ok(_) => Ok(Value::Boolean(true)),
@@ -72,20 +69,17 @@ impl Interpreter {
         match statement {
             Stmt::Output { target } => self.evaluate_output_stmt(target),
             Stmt::Decleration { identifier, type_ } => self.evaluate_declaration_stmt(identifier, type_),
-            Stmt::Assignment { identifier, value } => {
-                let val = self.evaluate_ast(*value.clone())?;
-                self.current_env
-                    .borrow_mut()
-                    .set(identifier, val)
-                    .map_err(|e| CPSError {
-                        error_type: ErrorType::Runtime,
-                        message: format!("Failed to assign value to '{}': {}", identifier, e.message),
-                        hint: None,
-                        line: 0,
-                        column: 0,
-                        source: None,
-                    })
+            Stmt::Assignment { identifier, value } => self.evaluate_assignment_stmt(identifier, value),
+            Stmt::Input { identifier } => self.evaluate_input_stmt(identifier),
+            Stmt::If { condition, then_branch, else_branch } => self.evaluate_if_stmt(condition, then_branch, else_branch),
+            Stmt::While { condition, body } => self.evaluate_while_stmt(condition, body),
+            Stmt::Block(block) => {
+                for stmt in &block.statements {
+                    self.evaluate_stmt(stmt)?;
+                }
+                Ok(())
             }
+            Stmt::For { identifier, start, end, body } => self.evaluate_for(identifier, start, end, body),
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
@@ -96,7 +90,169 @@ impl Interpreter {
                     source: None,
                 });
             }
+
         }
+    }
+
+    fn evaluate_assignment_stmt(&mut self, identifier: &String, value: &Ast) -> Result<(), CPSError> {
+        let value_expression = match value {
+            Ast::Expression(expr) => expr,
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Invalid assignment value for '{}': {:?}", identifier, value),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        };
+
+
+        let val = self.evaluate_expr(value_expression)?;
+
+        let expected_type = self.current_env.borrow_mut().get_type(identifier)?;
+
+        let actual_type = match &val {
+            Value::Integer(_) => Type::Integer,
+            Value::Real(_) => Type::Real,
+            Value::String(_) => Type::String,
+            Value::Boolean(_) => Type::Boolean,
+            Value::Char(_) => Type::Char,
+            Value::Array(_) => Type::Array(Box::new(Type::Integer), 0), // Simplified
+            Value::Identifier(_) => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Cannot assign unresolved identifier to '{}'", identifier),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        };
+
+        let converted_val = match (&val, &expected_type, &actual_type) {
+            (Value::Real(r), Type::Integer, Type::Real) => Value::Integer(*r as i64),
+
+            (Value::Integer(i), Type::Real, Type::Integer) => Value::Real(*i as f64),
+
+            _ if actual_type == expected_type => val.clone(),
+
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!(
+                        "Type mismatch: cannot assign {:?} to variable '{}' of type {:?}",
+                        actual_type, identifier, expected_type
+                    ),
+                    hint: Some("The value type must match the declared variable type".to_string()),
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        };
+
+        
+        self.current_env
+            .borrow_mut()
+            .set(identifier, converted_val)
+            .map_err(|e| CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!("Failed to assign value to '{}': {}", identifier, e.message),
+                hint: None,
+                line: 0,
+                column: 0,
+                source: None,
+            })
+    }
+
+    fn evaluate_for(&mut self, identifier: &String, start: &Expr, end: &Expr, body: &BlockStmt) -> Result<(), CPSError> {
+        let start_value = self.evaluate_expr(start)?;
+        let end_value = self.evaluate_expr(end)?;
+
+        let start_int;
+        let end_int;
+
+        match start_value {
+            Value::Integer(n) => start_int = n,
+            Value::Real(n) => {
+                if n.fract() != 0.0 {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("FOR loop start value must be an integer, got real number: {}", n),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+                start_int = n as i64;
+            }
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("FOR loop start value must be an integer, got: {:?}", start_value),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        }
+        match end_value {
+            Value::Integer(n) => end_int = n,
+            Value::Real(n) => {
+                if n.fract() != 0.0 {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("FOR loop start value must be an integer, got real number: {}", n),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+                end_int = n as i64;
+            }
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("FOR loop end value must be an integer, got: {:?}", end_value),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        }
+
+        // first declare the loop variable
+        self.current_env
+            .borrow_mut()
+            .define(identifier.to_owned(), Value::Integer(start_int.to_owned()));
+
+        for i in start_int.to_owned()..=end_int.to_owned() {
+            self.current_env
+                .borrow_mut()
+                .set(identifier, Value::Integer(i))
+                .map_err(|e| CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Failed to assign value to loop variable '{}': {}", identifier, e.message),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                })?;
+
+            for stmt in &body.statements {
+                self.evaluate_stmt(stmt)?;
+            }
+        }
+
+        Ok(())
     }
 
     fn evaluate_output_stmt(&mut self, target: &Expr) -> Result<(), CPSError> {
@@ -149,6 +305,81 @@ impl Interpreter {
         println!("{}", value);
         Ok(())
     }
+
+    fn evaluate_input_stmt(&mut self, identifier: &String) -> Result<(), CPSError> {
+        use std::io::{self, Write};
+
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        let input = input.trim().to_string();
+
+        self.current_env // all inputs r treated as strings
+            .borrow_mut()
+            .set(identifier, Value::String(input))
+            .map_err(|e| CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!("Failed to assign input to '{}': {}", identifier, e.message),
+                hint: None,
+                line: 0,
+                column: 0,
+                source: None,
+            })
+    }
+
+    fn evaluate_if_stmt(&mut self, condition: &Expr, then_branch: &BlockStmt, else_brach: &Option<BlockStmt>) -> Result<(), CPSError> {
+        let cond_value = self.evaluate_expr(condition)?;
+        match cond_value {
+            Value::Boolean(true) => {
+                for stmt in &then_branch.statements {
+                    self.evaluate_stmt(stmt)?;
+                }
+            }
+            Value::Boolean(false) => {
+                if let Some(else_block) = else_brach {
+                    for stmt in &else_block.statements {
+                        self.evaluate_stmt(stmt)?;
+                    }
+                }
+            }
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Condition in IF statement did not evaluate to a boolean: {:?}", cond_value),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn evaluate_while_stmt(&mut self, condition: &Expr, body: &BlockStmt) -> Result<(), CPSError> {
+        loop {
+            let cond_value = self.evaluate_expr(condition)?;
+            match cond_value {
+                Value::Boolean(true) => {
+                    self.evaluate_stmt(&Stmt::Block(body.to_owned()))?;
+                }
+                Value::Boolean(false) => break,
+                _ => {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Condition in WHILE statement did not evaluate to a boolean: {:?}", cond_value),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
 
     fn evaluate_declaration_stmt(&mut self, identifier: &String, type_: &Type) -> Result<(), CPSError> {
         let inital_value = match type_ {
@@ -334,6 +565,19 @@ impl Interpreter {
                 }
                 Ok(Value::Integer(a / b))
             }
+            (Value::Real(a), Value::Real(b)) => {
+                if b == 0.0 {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: "Division by zero".to_string(),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+                Ok(Value::Real((a / b).floor()))
+            }
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
                 message: format!("Unsupported types for integer division: {:?} // {:?}", left, right),
@@ -359,7 +603,20 @@ impl Interpreter {
                     });
                 }
                 Ok(Value::Integer(a % b))
-            }
+            },
+            (Value::Real(a), Value::Real(b)) => {
+                if b == 0.0 {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: "Modulo by zero".to_string(),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+                Ok(Value::Real(a % b))
+            },
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
                 message: format!("Unsupported types for modulo: {:?} % {:?}", left, right),
@@ -539,6 +796,40 @@ impl Interpreter {
 
 
     fn evaluate_literal(&self, lit: &Value) -> Result<Value, CPSError> {
+        match lit {
+            Value::Integer(_) |
+            Value::Real(_) |
+            Value::String(_) |
+            Value::Boolean(_) |
+            Value::Char(_) => {},
+            Value::Identifier(iden) => {
+                match self.current_env 
+                    .borrow()
+                    .get(iden) {
+                        Some(value) => return Ok(value),
+                        None => {
+                            return Err(CPSError {
+                                error_type: ErrorType::Runtime,
+                                message: format!("Undefined identifier: {}", iden),
+                                hint: None,
+                                line: 0,
+                                column: 0,
+                                source: None,
+                            });
+                        }
+                    }
+            }
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Unsupported literal in interpreter: {:?}", lit),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        }
         Ok(lit.clone())
     }
 

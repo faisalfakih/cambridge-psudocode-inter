@@ -30,7 +30,7 @@ fn main() {
     let mut parser = parser::Parser::new(tokens, contents.to_owned()).clone();
     let res = parser.parse_statements();
     match res.clone() {
-        Ok(_) => {
+        Ok(_ast) => {
             // for a in ast.iter() {
             //     a.print_prefix();
             // }
