@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::errortype::{CPSError, ErrorType};
-use crate::Inter::cps::{Environment, Function, FunctionType, Type, Value};
+use crate::Inter::cps::{Environment, Function, Type, Value};
 use crate::Lexer::lexer::TokenType;
 use crate::Parser::ast::{Ast, BinaryExpr, BlockStmt, Expr, Stmt};
 
@@ -526,7 +526,7 @@ impl Interpreter {
         for (i, (param_name, param_type)) in func_value.parameters.iter().enumerate() {
             let arg_value = self.evaluate_expr(&arguments[i])?;
 
-            if !check_if_value_can_be_converted(&arg_value, param_type) {
+            if !check_if_type_can_be_converted(&arg_value, param_type) {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
                     message: format!(
@@ -561,7 +561,7 @@ impl Interpreter {
 
         match (&return_value, &func_value.return_type) {
             (Some(val), Some(expected_type)) => {
-                if !check_if_value_can_be_converted(val, expected_type) {
+                if !check_if_type_can_be_converted(val, expected_type) {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
                         message: format!(
@@ -652,8 +652,23 @@ impl Interpreter {
     }
 
     fn evaluate_binary(&mut self, binary: &BinaryExpr) -> Result<Value, CPSError> {
-        let left = self.evaluate_ast(*binary.left.clone())?;
-        let right = self.evaluate_ast(*binary.right.clone())?;
+        let mut left = self.evaluate_ast(*binary.left.clone())?;
+        let mut right = self.evaluate_ast(*binary.right.clone())?;
+
+        // if !check_if_value_can_be_converted(&left, &right) {
+        //     return Err(CPSError {
+        //         error_type: ErrorType::Runtime,
+        //         message: format!("Incompatible types for binary operation: {:?} and {:?}", left, right),
+        //         hint: None,
+        //         line: 0,
+        //         column: 0,
+        //         source: None,
+        //     });
+        // }
+
+        // convert them to compatible types
+        (left, right) = convert_values_to_compatible_types(&left, &right); // allow comparison between int and real
+
 
         match binary.operator {
             TokenType::Plus => self.add(left, right),
@@ -873,18 +888,46 @@ impl Interpreter {
     }
 
     fn concatenate(&self, left: Value, right: Value) -> Result<Value, CPSError> {
-        match (left.clone(), right.clone()) {
-            (Value::String(l), Value::String(r)) => Ok(Value::String(l + &r)),
-            _ => Err(CPSError {
-                error_type: ErrorType::Runtime,
-                message: format!("Unsupported types for concatenation: {:?} & {:?}", left, right),
-                hint: None,
-                line: 0,
-                column: 0,
-                source: None,
-            }),
-        }
+        let left_str = match left {
+            Value::String(s) => s,
+            Value::Integer(i) => i.to_string(),
+            Value::Real(r) => r.to_string(),
+            Value::Boolean(b) => b.to_string(),
+            Value::Char(c) => c.to_string(),
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Unsupported type for concatenation: {:?}", left),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        };
+
+        let right_str = match right {
+            Value::String(s) => s,
+            Value::Integer(i) => i.to_string(),
+            Value::Real(r) => r.to_string(),
+            Value::Boolean(b) => b.to_string(),
+            Value::Char(c) => c.to_string(),
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Unsupported type for concatenation: {:?}", right),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        };
+
+        Ok(Value::String(format!("{}{}", left_str, right_str)))
     }
+
+
 
     fn equal(&self, left: Value, right: Value) -> Result<Value, CPSError> {
         match (left.clone(), right.clone()) {
@@ -1064,7 +1107,7 @@ impl Interpreter {
 
 }
 
-fn check_if_value_can_be_converted(value: &Value, target_type: &Type) -> bool {
+fn check_if_type_can_be_converted(value: &Value, target_type: &Type) -> bool {
     match (value, target_type) {
         (Value::Integer(_), Type::Integer) => true,
         (Value::Real(_), Type::Real) => true,
@@ -1080,5 +1123,28 @@ fn check_if_value_can_be_converted(value: &Value, target_type: &Type) -> bool {
             }
         },
         _ => false,
+    }
+}
+
+// fn check_if_value_can_be_converted(value1: &Value, value2: &Value) -> bool {
+//     match (value1, value2) {
+//         (Value::Integer(_), Value::Integer(_)) => true,
+//         (Value::Real(_), Value::Real(_)) => true,
+//         (Value::String(_), Value::String(_)) => true,
+//         (Value::Boolean(_), Value::Boolean(_)) => true,
+//         (Value::Char(_), Value::Char(_)) => true,
+//         
+//         (Value::Integer(_), Value::Real(_)) => true,
+//         (Value::Real(_), Value::Integer(_)) => true,
+//         
+//         _ => false,
+//     }
+// }
+
+fn convert_values_to_compatible_types(value1: &Value, value2: &Value) -> (Value, Value) {
+    match (value1, value2) {
+        (Value::Integer(i), Value::Real(r)) => (Value::Real(*i as f64), Value::Real(*r)),
+        (Value::Real(r), Value::Integer(i)) => (Value::Real(*r), Value::Real(*i as f64)),
+        _ => (value1.clone(), value2.clone()),
     }
 }
