@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 use crate::errortype::CPSError;
-use crate::Parser::ast::{BlockStmt, Stmt};
+use crate::Parser::ast::{BlockStmt, Expr, Stmt};
 
 
 #[derive(Clone, Debug, PartialEq)]
@@ -14,13 +14,20 @@ pub enum Type {
     Boolean,
     Char,
     Function,
-    Array(Box<Type>, usize),
+    Array(ArrayType),
     Record(String), 
     Enum(String),
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArrayType {
+    pub lower_bound: Box<Expr>,
+    pub upper_bound: Box<Expr>,
+    pub base_type: Box<Type>,
+}
+
 // Runtime values (actual data)
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Integer(i64),
     Real(f64),
@@ -29,13 +36,26 @@ pub enum Value {
     Char(char),
     Array(Vec<Value>),
     Identifier(String),
-    Function(Function)
+    Function(Function),
     // Record(HashMap<String, Value>),
     // Enum { type_name: String, variant: String },
     // Null,  
 }
 
-#[derive(Clone, Debug)]
+pub enum FunctionType {
+    UserDefined(Function),
+    Builtin(BuiltinFunction),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BuiltinFunction {
+    pub name: String,
+    pub parameters: Vec<(String, Type)>,
+    pub return_type: Option<Type>,
+    pub implementation: fn(Vec<Value>) -> Result<Option<Value>, CPSError>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     pub parameters: Vec<(String, Type)>,
     pub return_type: Option<Type>,
@@ -51,10 +71,27 @@ pub struct Environment {
 
 impl Environment {
     pub fn new_global() -> Rc<RefCell<Self>> {
-        Rc::new(RefCell::new(Environment {
+        let global = Rc::new(RefCell::new(Environment {
             bindings: HashMap::new(),
             parent: None,
-        }))
+        }));
+        
+        // declare builtin functions here
+
+
+        global
+    }
+
+    fn register_builtins(env: Rc<RefCell<Environment>>) {
+        env.borrow_mut()
+            .define("RIGHT".to_string(), Value::Function(Function {
+                parameters: vec![
+                    ("string".to_string(), Type::String),
+                    ("length".to_string(), Type::Integer),
+                ],
+                return_type: Some(Type::String),
+                body: BlockStmt { statements: vec![] },
+            }));
     }
 
     pub fn new_child(parent: Rc<RefCell<Environment>>) -> Rc<RefCell<Self>> {
@@ -105,9 +142,19 @@ impl Environment {
                 Value::String(_) => Type::String,
                 Value::Boolean(_) => Type::Boolean,
                 Value::Char(_) => Type::Char,
-                Value::Array(_) => Type::Array(Box::new(Type::Integer), 0), // Placeholder
+                // Value::Array(_) => Type::Array(), // Placeholder
                 Value::Identifier(_) => Type::String, // Placeholder
                 Value::Function(_) => Type::Function,
+                _ => {
+                    return Err(CPSError {
+                        error_type: crate::errortype::ErrorType::Runtime,
+                        message: format!("Cannot determine type of variable '{}'", name),
+                        hint: Some("Check the variable's value.".to_string()),
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
             };
             return Ok(var_type);
         }
@@ -128,4 +175,5 @@ impl Environment {
     pub fn define(&mut self, name: String, value: Value) {
         self.bindings.insert(name, value);
     }
+
 }

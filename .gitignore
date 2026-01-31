@@ -24,3 +24,6 @@ target
 # Added by cargo
 
 /target
+
+# anything ending with .sh
+*.sh

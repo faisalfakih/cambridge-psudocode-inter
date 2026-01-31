@@ -22,21 +22,21 @@ pub enum Associativity {
     Right,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BinaryExpr {
     pub left: Box<Ast>,
     pub operator: TokenType,
     pub right: Box<Ast>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Ast {
     Identifier(String),
     Expression(Expr),
     Stmt(Stmt)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Binary(BinaryExpr),
     Literal(Value),
@@ -46,7 +46,7 @@ pub enum Expr {
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
     If { condition: Box<Expr>, then_branch: BlockStmt, else_branch: Option<BlockStmt> },
     While { condition: Box<Expr>, body: BlockStmt },
@@ -71,7 +71,7 @@ pub enum Stmt {
     Call { name: String, arguments: Vec<Expr> },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockStmt {
     pub statements: Vec<Stmt>,
 }

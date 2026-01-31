@@ -40,11 +40,7 @@ pub enum TokenType {
     If,
     Inherits,
     Input, 
-    Int, 
     Integer,
-    LCase,
-    Length, 
-    Mid,
     Mod,
     Next,
     New,
@@ -57,7 +53,6 @@ pub enum TokenType {
     Private,
     Public,
     PutRecord,
-    Rand,
     Random,
     Read,
     ReadFile,
@@ -65,7 +60,6 @@ pub enum TokenType {
     Repeat,
     Return, 
     Returns,
-    Right,
     Seek,
     Step,
     String,
@@ -73,7 +67,6 @@ pub enum TokenType {
     Then,
     True,
     Type,
-    UCase,
     Until,
     While,
     Write,
@@ -103,6 +96,8 @@ pub enum TokenType {
     Colon,
     LParen,
     RParen,
+    LSquare,
+    RSquare,
 
     Comma,
 }
@@ -179,13 +174,9 @@ impl Lexer {
             ("IF".to_string(), TokenType::If),
             ("INHERITS".to_string(), TokenType::Inherits),
             ("INPUT".to_string(), TokenType::Input),
-            ("INT".to_string(), TokenType::Int),
             ("INTEGER".to_string(), TokenType::Integer),
-            ("LCASE".to_string(), TokenType::LCase),
-            ("LENGTH".to_string(), TokenType::Length),
 
             // Keywords M-O
-            ("MID".to_string(), TokenType::Mid),
             ("MOD".to_string(), TokenType::Mod),
             ("NEW".to_string(), TokenType::New),
             ("NEXT".to_string(), TokenType::Next),
@@ -202,7 +193,6 @@ impl Lexer {
             ("PROCEDURE".to_string(), TokenType::Procedure),
             ("PUBLIC".to_string(), TokenType::Public),
             ("PUTRECORD".to_string(), TokenType::PutRecord),
-            ("RAND".to_string(), TokenType::Rand),
             ("RANDOM".to_string(), TokenType::Random),
             ("READ".to_string(), TokenType::Read),
             ("READFILE".to_string(), TokenType::ReadFile),
@@ -210,7 +200,6 @@ impl Lexer {
             ("REPEAT".to_string(), TokenType::Repeat),
             ("RETURN".to_string(), TokenType::Return),
             ("RETURNS".to_string(), TokenType::Returns),
-            ("RIGHT".to_string(), TokenType::Right),
 
             // Keywords S-U
             ("SEEK".to_string(), TokenType::Seek),
@@ -221,7 +210,6 @@ impl Lexer {
             ("TO".to_string(), TokenType::To),
             ("TRUE".to_string(), TokenType::True),
             ("TYPE".to_string(), TokenType::Type),
-            ("UCASE".to_string(), TokenType::UCase),
             ("UNTIL".to_string(), TokenType::Until),
 
             // Keywords W
@@ -263,7 +251,7 @@ impl Lexer {
 
         // tokenize symbols and literals first
         // iterate through source code character by character
-        for c in self.source.chars() {
+        for _ in self.source.chars() {
             // skip whitespace
             while let Some(c) = self.peek(0) {
                 if c.is_whitespace() {
@@ -389,7 +377,17 @@ impl Lexer {
                     self.position += 1;
                     self.column += 1;
                     return Ok(Token::new(",".to_string(), TokenType::Comma, self.line, self.column - 1));
-                }
+                },
+                '[' => {
+                    self.position += 1;
+                    self.column += 1;
+                    return Ok(Token::new("[".to_string(), TokenType::LSquare, self.line, self.column - 1));
+                },
+                ']' => {
+                    self.position += 1;
+                    self.column += 1;
+                    return Ok(Token::new("]".to_string(), TokenType::RSquare, self.line, self.column - 1));
+                },
                 _ if c.is_alphabetic() || c == '_' => return self.handle_identifier(),
                 _ if c.is_digit(10) =>  return self.handle_number_literal(),
                 _ => return Err(CPSError {

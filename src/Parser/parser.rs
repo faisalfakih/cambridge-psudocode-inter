@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::Inter::cps::{Type, Value};
+use crate::Inter::cps::{ArrayType, Type, Value};
 use crate::Lexer::{lexer::Token, lexer::TokenType};
 use crate::errortype::{CPSError, ErrorType};
 use crate::Parser::ast::{BinaryExpr, BlockStmt, Expr};
@@ -667,6 +667,58 @@ impl Parser {
             TokenType::String => Type::String,
             TokenType::Char => Type::Char,
             TokenType::Boolean => Type::Boolean, 
+            TokenType::Array => {
+                // parse array type
+                let open_square= self.advance();
+                if open_square.token_type != TokenType::LSquare {
+                    return Err(CPSError { error_type: ErrorType::Syntax, 
+                        message: "Expected '[' after 'ARRAY'".to_string(), hint: Some("Array type must specify dimensions using brackets".to_string()), 
+                        line: open_square.line, column: open_square.column, source: Some(self.source.clone()) });
+                }
+
+                let lower_bound = self.parse_expr(0);
+                let colon_token = self.advance();
+                if colon_token.token_type != TokenType::Colon {
+                    return Err(CPSError { error_type: ErrorType::Syntax, 
+                        message: "Expected ':' in array dimension declaration".to_string(), hint: Some("Array dimensions must be specified as [lower:upper]".to_string()), 
+                        line: colon_token.line, column: colon_token.column, source: Some(self.source.clone()) });
+                }
+                let upper_bound = self.parse_expr(0);
+                let close_square = self.advance();
+                if close_square.token_type != TokenType::RSquare {
+                    return Err(CPSError { error_type: ErrorType::Syntax, 
+                        message: "Expected ']' after array dimension declaration".to_string(), hint: Some("Array type must specify dimensions using brackets".to_string()), 
+                        line: close_square.line, column: close_square.column, source: Some(self.source.clone()) });
+                }
+
+                let of_type_token = self.advance();
+                if of_type_token.token_type != TokenType::Of {
+                    return Err(CPSError { error_type: ErrorType::Syntax, 
+                        message: "Expected 'OF' after array dimension declaration".to_string(), hint: Some("Array type must specify the base type using 'OF'".to_string()), 
+                        line: of_type_token.line, column: of_type_token.column, source: Some(self.source.clone()) });
+                }
+
+                let base_type_token = self.advance();
+                let base_type = match base_type_token.token_type {
+                    TokenType::Integer => Type::Integer,
+                    TokenType::Real => Type::Real,
+                    TokenType::String => Type::String,
+                    TokenType::Char => Type::Char,
+                    TokenType::Boolean => Type::Boolean,
+                    _ => {
+                        return Err(CPSError { error_type: ErrorType::Syntax, 
+                            message: "Expected a valid data type for array base type".to_string(), hint: None, 
+                            line: base_type_token.line, column: base_type_token.column, source: Some(self.source.clone())
+                        });
+                    }
+                };
+
+                Type::Array(ArrayType {
+                    lower_bound: Box::new(self.ast_to_expr(lower_bound?)?),
+                    upper_bound: Box::new(self.ast_to_expr(upper_bound?)?),
+                    base_type: Box::new(base_type),
+                })
+            }
             _ => {
                 return Err(CPSError { error_type: ErrorType::Syntax, 
                     message: "Expected a valid data type after the colon".to_string(), hint: None, 
@@ -985,22 +1037,18 @@ impl Parser {
         let return_token = self.advance(); // consume 'return'
         let expr = self.parse_expr(0)?;
 
-        match expr {
-            Ast::Expression(e) => Ok(Ast::Stmt(Stmt::Return { value: Box::new(e) }) ),
-            _ => {
-                return Err(CPSError {
-                    error_type: ErrorType::Syntax,
-                    message: "Expected an expression after RETURN".to_string(),
-                    hint: Some("RETURN must be followed by a valid expression".to_string()),
-                    line: return_token.line,
-                    column: return_token.column,
-                    source: Some(self.source.clone()),
-                });
-            }
-        }
+        let expr = self.ast_to_expr(expr).map_err(|_| CPSError {
+            error_type: ErrorType::Syntax,
+            message: "Expected an expression after RETURN".to_string(),
+            hint: Some("RETURN must be followed by a valid expression".to_string()),
+            line: return_token.line,
+            column: return_token.column,
+            source: Some(self.source.clone()),
+        })?;
 
-
+        Ok(Ast::Stmt(Stmt::Return { value: Box::new(expr) }))
     }
+
 
     fn parse_call(&mut self) -> Result<Ast, CPSError> {
         self.advance(); // consume 'call'

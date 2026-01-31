@@ -16,27 +16,31 @@ This interpreter is designed to help students and educators work with Cambridge 
   - `STRING` - Text data
   - `CHAR` - Single characters
   - `BOOLEAN` - True/False values
-
 - **Variable Operations**
   - `DECLARE` statements with type annotations
   - Assignment using `<-` operator
   - Proper variable scoping
-
 - **Control Structures**
   - `IF...THEN...ELSE...ENDIF` conditionals
   - `WHILE...ENDWHILE` loops
   - `FOR...TO...NEXT` loops with integer iteration
-  - `FUNCTIONS` and `PROCEDURES`
-
+  - `FUNCTIONS` and `PROCEDURES` with return values and parameters
 - **Operators**
   - Arithmetic: `+`, `-`, `*`, `/`, `DIV`, `MOD`, `^` (power)
   - Comparison: `=`, `<>`, `<`, `<=`, `>`, `>=`
   - Logical: `AND`, `OR`
   - String concatenation: `&`
-
 - **I/O Operations**
   - `OUTPUT` - Display values to console
-  - `INPUT` - Read user input with type-aware parsing
+  - `INPUT` - Read user input as strings
+- **Built-in Functions**
+  - `RIGHT(string, length)` - Extract rightmost characters from a string
+  - `LENGTH(string)` - Get the length of a string
+  - `MID(string, start, length)` - Extract substring (1-indexed)
+  - `LCASE(string)` - Convert string to lowercase
+  - `UCASE(string)` - Convert string to uppercase
+  - `INT(value)` - Convert real/integer/string to integer via floor operation (enhanced from standard to accept strings)
+  - `RAND(max)` - Generate random real number in range [0, max)
 
 ## 💡 Motivation
 

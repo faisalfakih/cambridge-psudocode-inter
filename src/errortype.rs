@@ -28,7 +28,7 @@ impl std::fmt::Display for ErrorType {
             ErrorType::Lexical => write!(f, "Lexical"),
             ErrorType::Syntax => write!(f, "Syntax"),
             ErrorType::Semantic => write!(f, "Semantic"),
-            ErrorType::Runtime => write!(f, "Runtime"),
+            ErrorType::Runtime => write!(f, "Runtime")
         }
     }
 }

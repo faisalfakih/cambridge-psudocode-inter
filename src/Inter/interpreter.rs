@@ -1,10 +1,19 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::errortype::{CPSError, ErrorType};
-use crate::Inter::cps::{Environment, Function, Type, Value};
+use crate::Inter::cps::{Environment, Function, FunctionType, Type, Value};
 use crate::Lexer::lexer::TokenType;
 use crate::Parser::ast::{Ast, BinaryExpr, BlockStmt, Expr, Stmt};
 
+const BUILTIN_FUNCTIONS: &[&str] = &[
+    "RIGHT",
+    "LENGTH",
+    "MID",
+    "LCASE",
+    "UCASE",
+    "INT",
+    "RAND",
+];
 
 #[derive(Debug, Clone)]
 pub struct Interpreter {
@@ -13,9 +22,20 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
-        Interpreter {
+        let interpreter = Interpreter {
             current_env: Environment::new_global(),
-        }
+        };
+
+        // // define builtin function 
+        // for &func_name in BUILTIN_FUNCTIONS.iter() {
+        //     interpreter.current_env.borrow_mut().define(
+        //         func_name.to_string(),
+        //         // Value::Function(FunctionType::Builtin(func_name.to_string()))
+        //     );
+        // }
+        
+
+        interpreter
     }
 
     pub fn interpret(&mut self, ast_nodes: Vec<Ast>) -> Result<(), CPSError> {
@@ -51,16 +71,6 @@ impl Interpreter {
                     Err(e) => Err(e),
                 }
             },
-            _ => {
-                return Err(CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("Unsupported AST node in interpreter: {:?}", node),
-                    hint: None,
-                    line: 0,
-                    column: 0,
-                    source: None,
-                });
-            }
         }
         // Ok(Value::Boolean(true)) // Placeholder return value
     }
@@ -126,7 +136,16 @@ impl Interpreter {
             Value::String(_) => Type::String,
             Value::Boolean(_) => Type::Boolean,
             Value::Char(_) => Type::Char,
-            Value::Array(_) => Type::Array(Box::new(Type::Integer), 0), // Simplified
+            Value::Array(_) => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Array assignment not supported for '{}'", identifier),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            },
             Value::Identifier(_) => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
@@ -425,6 +444,18 @@ impl Interpreter {
     fn evaluate_procedure(&mut self, identifier: &String, parameters: &Vec<(String, Type)>, body: &BlockStmt) -> Result<(), CPSError> {
         // self.evaluate_declaration_stmt(identifier, &Type::Function)?;
 
+        // first check if procedure is a builtin
+        if BUILTIN_FUNCTIONS.contains(&identifier.as_str()) {
+            return Err(CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!("Cannot redefine builtin function as procedure: {}", identifier),
+                hint: None,
+                line: 0,
+                column: 0,
+                source: None,
+            });
+        }
+
         let function_value = Value::Function(Function {
             parameters: parameters.to_owned(),
             body: body.to_owned(),
@@ -451,6 +482,20 @@ impl Interpreter {
     }
 
     fn evaluate_call(&mut self, identifier: &String, arguments: &Vec<Expr>) -> Result<Value, CPSError> {
+        if BUILTIN_FUNCTIONS.contains(&identifier.as_str()) {
+            let arg_values: Result<Vec<Value>, CPSError> = arguments
+                .iter()
+                .map(|arg| self.evaluate_expr(arg))
+                .collect();
+
+            let arg_values = arg_values?;
+            return match crate::Inter::builtins::call_builtin(identifier.clone(), &arg_values)? {
+                Some(value) => Ok(value),
+                None => Ok(Value::Boolean(false))
+            };
+        }
+
+
         let func_value = match self.current_env.borrow().get(identifier) {
             Some(Value::Function(func)) => func,
             _ => {
@@ -481,7 +526,7 @@ impl Interpreter {
         for (i, (param_name, param_type)) in func_value.parameters.iter().enumerate() {
             let arg_value = self.evaluate_expr(&arguments[i])?;
 
-            if !self.check_if_value_can_be_converted(&arg_value, param_type) {
+            if !check_if_value_can_be_converted(&arg_value, param_type) {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
                     message: format!(
@@ -516,7 +561,7 @@ impl Interpreter {
 
         match (&return_value, &func_value.return_type) {
             (Some(val), Some(expected_type)) => {
-                if !self.check_if_value_can_be_converted(val, expected_type) {
+                if !check_if_value_can_be_converted(val, expected_type) {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
                         message: format!(
@@ -562,6 +607,18 @@ impl Interpreter {
 
 
     fn evaluate_function(&mut self, identifier: &String, parameters: &Vec<(String, Type)>, return_type: Type, body: &BlockStmt) -> Result<(), CPSError> {
+        // first check if function is a builtin
+        if BUILTIN_FUNCTIONS.contains(&identifier.as_str()) {
+            return Err(CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!("Cannot redefine builtin function: {}", identifier),
+                hint: None,
+                line: 0,
+                column: 0,
+                source: None,
+            });
+        }
+
         let function_value = Value::Function(Function {
             parameters: parameters.to_owned(),
             body: body.to_owned(),
@@ -1004,23 +1061,24 @@ impl Interpreter {
     }
 
 
-    fn check_if_value_can_be_converted(&self, value: &Value, target_type: &Type) -> bool {
-        match (value, target_type) {
-            (Value::Integer(_), Type::Integer) => true,
-            (Value::Real(_), Type::Real) => true,
-            (Value::String(_), Type::String) => true,
-            (Value::Boolean(_), Type::Boolean) => true,
-            (Value::Char(_), Type::Char) => true,
-            (Value::Integer(_), Type::Real) => true,
-            (Value::Real(_), Type::Integer) => {
-                if let Value::Real(f) = value {
-                    f.fract() == 0.0
-                } else {
-                    false
-                }
-            },
-            _ => false,
-        }
-    }
 
+}
+
+fn check_if_value_can_be_converted(value: &Value, target_type: &Type) -> bool {
+    match (value, target_type) {
+        (Value::Integer(_), Type::Integer) => true,
+        (Value::Real(_), Type::Real) => true,
+        (Value::String(_), Type::String) => true,
+        (Value::Boolean(_), Type::Boolean) => true,
+        (Value::Char(_), Type::Char) => true,
+        (Value::Integer(_), Type::Real) => true,
+        (Value::Real(_), Type::Integer) => {
+            if let Value::Real(f) = value {
+                f.fract() == 0.0
+            } else {
+                false
+            }
+        },
+        _ => false,
+    }
 }
