@@ -281,9 +281,15 @@ impl Lexer {
                     return Ok(Token::new("+".to_string(), TokenType::Plus, self.line, self.column - 1));
                 },
                 '-' => {
+                    if let Some(next_char) = self.peek(1) {
+                        if next_char.is_digit(10) {
+                            return self.handle_negative_number_literal(); // <- check if its a negative num
+                        }
+                    }
                     self.position += 1;
                     self.column += 1;
                     return Ok(Token::new("-".to_string(), TokenType::Minus, self.line, self.column - 1));
+
                 },
                 '*' => {
                     self.position += 1;
@@ -491,5 +497,40 @@ impl Lexer {
 
         Ok(Token::new(lexeme, TokenType::NumberLiteral, start_line, start_column))
     }
+
+    fn handle_negative_number_literal(&mut self) -> Result<Token, CPSError> {
+        let start_line = self.line;
+        let start_column = self.column;
+        let mut lexeme = String::new();
+
+        lexeme.push('-');
+        self.position += 1;
+        self.column += 1;
+
+        while let Some(c) = self.peek(0) {
+            if c.is_digit(10) || c == '.' {
+                lexeme.push(c);
+                self.position += 1;
+                self.column += 1;
+            } else if c == '_' {
+                self.position += 1;
+                self.column += 1;
+            } else if c.is_alphabetic() {
+                return Err(CPSError {
+                    error_type: ErrorType::Lexical,
+                    message: "Invalid character in number literal".to_string(),
+                    hint: Some("Number literals can only contain digits and decimal points.".to_string()),
+                    line: self.line,
+                    column: self.column,
+                    source: Some(self.source.clone()),
+                });
+            } else {
+                break;
+            }
+        }
+
+        Ok(Token::new(lexeme, TokenType::NumberLiteral, start_line, start_column))
+    }
+
 
 }

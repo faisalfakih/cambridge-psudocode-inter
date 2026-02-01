@@ -73,20 +73,6 @@ impl Parser {
     }
 
 
-    fn ast_to_expr(&self, ast: Ast) -> Result<Expr, CPSError> {
-        match ast {
-            Ast::Expression(e) => Ok(e),
-            Ast::Identifier(id) => Ok(Expr::Literal(Value::Identifier(id))),
-            _ => Err(CPSError {
-                error_type: ErrorType::Syntax,
-                message: "Expected an expression".to_string(),
-                hint: Some("Make sure to provide a valid expression".to_string()),
-                line: 0,
-                column: 0,
-                source: Some(self.source.clone()),
-            }),
-        }
-    }
 
     fn is_terminator(&self, token_type: TokenType) -> bool {
         !matches!(token_type, 
@@ -159,7 +145,10 @@ impl Parser {
 
                 if self.peek(0).token_type == TokenType::LParen { // check if its a function call
                     self.parse_function_call_expr(name)
-                } else {
+                } else if self.peek(0).token_type == TokenType::LSquare { // array access
+                    self.parse_array_access_expr(name)
+                }
+                else {
                     Ok(Ast::Identifier(name))
                 }
 
@@ -264,7 +253,7 @@ impl Parser {
 
         while self.peek(0).token_type != TokenType::RParen {
             let expr = self.parse_expr(0)?;
-            args.push(self.ast_to_expr(expr)?);
+            args.push(ast_to_expr(expr)?);
 
             if self.peek(0).token_type == TokenType::Comma {
                 self.advance(); // consume comma
@@ -292,6 +281,42 @@ impl Parser {
             arguments: args,
         }))
 
+    }
+
+    fn parse_array_access_expr(&mut self, name: String) -> Result<Ast, CPSError> {
+        // consume '['
+        let open_square = self.advance();
+        if open_square.token_type != TokenType::LSquare {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected '[' after array name".to_string(),
+                hint: Some("Array indices must be enclosed in brackets".to_string()),
+                line: open_square.line,
+                column: open_square.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let index_expr = self.parse_expr(0)?;
+        let index = ast_to_expr(index_expr)?;
+
+        // consume ']'
+        let close_square = self.advance();
+        if close_square.token_type != TokenType::RSquare {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected ']' after array index".to_string(),
+                hint: Some("Array indices must be enclosed in brackets".to_string()),
+                line: close_square.line,
+                column: close_square.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        Ok(Ast::Expression(Expr::ArrayAccess {
+            name: name,
+            index: Box::new(index),
+        }))
     }
 
     pub fn parse_statements(&mut self) -> Result<Vec<Ast>, CPSError> {
@@ -667,58 +692,7 @@ impl Parser {
             TokenType::String => Type::String,
             TokenType::Char => Type::Char,
             TokenType::Boolean => Type::Boolean, 
-            TokenType::Array => {
-                // parse array type
-                let open_square= self.advance();
-                if open_square.token_type != TokenType::LSquare {
-                    return Err(CPSError { error_type: ErrorType::Syntax, 
-                        message: "Expected '[' after 'ARRAY'".to_string(), hint: Some("Array type must specify dimensions using brackets".to_string()), 
-                        line: open_square.line, column: open_square.column, source: Some(self.source.clone()) });
-                }
-
-                let lower_bound = self.parse_expr(0);
-                let colon_token = self.advance();
-                if colon_token.token_type != TokenType::Colon {
-                    return Err(CPSError { error_type: ErrorType::Syntax, 
-                        message: "Expected ':' in array dimension declaration".to_string(), hint: Some("Array dimensions must be specified as [lower:upper]".to_string()), 
-                        line: colon_token.line, column: colon_token.column, source: Some(self.source.clone()) });
-                }
-                let upper_bound = self.parse_expr(0);
-                let close_square = self.advance();
-                if close_square.token_type != TokenType::RSquare {
-                    return Err(CPSError { error_type: ErrorType::Syntax, 
-                        message: "Expected ']' after array dimension declaration".to_string(), hint: Some("Array type must specify dimensions using brackets".to_string()), 
-                        line: close_square.line, column: close_square.column, source: Some(self.source.clone()) });
-                }
-
-                let of_type_token = self.advance();
-                if of_type_token.token_type != TokenType::Of {
-                    return Err(CPSError { error_type: ErrorType::Syntax, 
-                        message: "Expected 'OF' after array dimension declaration".to_string(), hint: Some("Array type must specify the base type using 'OF'".to_string()), 
-                        line: of_type_token.line, column: of_type_token.column, source: Some(self.source.clone()) });
-                }
-
-                let base_type_token = self.advance();
-                let base_type = match base_type_token.token_type {
-                    TokenType::Integer => Type::Integer,
-                    TokenType::Real => Type::Real,
-                    TokenType::String => Type::String,
-                    TokenType::Char => Type::Char,
-                    TokenType::Boolean => Type::Boolean,
-                    _ => {
-                        return Err(CPSError { error_type: ErrorType::Syntax, 
-                            message: "Expected a valid data type for array base type".to_string(), hint: None, 
-                            line: base_type_token.line, column: base_type_token.column, source: Some(self.source.clone())
-                        });
-                    }
-                };
-
-                Type::Array(ArrayType {
-                    lower_bound: Box::new(self.ast_to_expr(lower_bound?)?),
-                    upper_bound: Box::new(self.ast_to_expr(upper_bound?)?),
-                    base_type: Box::new(base_type),
-                })
-            }
+            TokenType::Array => self.parse_array_type()?,
             _ => {
                 return Err(CPSError { error_type: ErrorType::Syntax, 
                     message: "Expected a valid data type after the colon".to_string(), hint: None, 
@@ -733,16 +707,36 @@ impl Parser {
     fn parse_assignment(&mut self) -> Result<Ast, CPSError> {
         let identifier = self.advance();
 
-        let assign_token = self.advance();
-        if assign_token.token_type != TokenType::Arrow {
+        let assign_token = self.peek(0);
+        let array_index: Option<Expr> = None;
+        if assign_token.token_type != TokenType::Arrow && assign_token.token_type != TokenType::LSquare {
             return Err(CPSError { error_type: ErrorType::Syntax, 
                 message: "Expected '<-' in assignment".to_string(), hint: None, 
                 line: assign_token.line, column: assign_token.column, source: Some(self.source.clone()) });
+        } 
+        if assign_token.token_type == TokenType::LSquare {
+            // array access
+            let array_access = self.parse_array_access_expr(identifier.lexeme.clone())?;
+            if let Ast::Expression(Expr::ArrayAccess { name: _, index }) = array_access {
+                // consume '<-'
+                let assign_token = self.advance();
+                if assign_token.token_type != TokenType::Arrow {
+                    return Err(CPSError { error_type: ErrorType::Syntax, 
+                        message: "Expected '<-' in assignment".to_string(), hint: None, 
+                        line: assign_token.line, column: assign_token.column, source: Some(self.source.clone()) });
+                }
+
+                let value = self.parse_expr(0)?;
+
+                return Ok(Ast::Stmt(Stmt::Assignment { identifier: identifier.lexeme, array_index: Some(*index), value: Box::new(value) }));
+            }         
         }
+
+        self.advance();
 
         let value = self.parse_expr(0)?;
 
-        Ok(Ast::Stmt(Stmt::Assignment { identifier: identifier.lexeme, value: Box::new(value) }))
+        Ok(Ast::Stmt(Stmt::Assignment { identifier: identifier.lexeme, array_index, value: Box::new(value) }))
     }
 
     fn parse_procedure(&mut self) -> Result<Ast, CPSError> {
@@ -806,6 +800,7 @@ impl Parser {
                 TokenType::String => Type::String,
                 TokenType::Char => Type::Char,
                 TokenType::Boolean => Type::Boolean,
+                TokenType::Array => self.parse_array_type()?,
                 _ => {
                     return Err(CPSError {
                         error_type: ErrorType::Syntax,
@@ -935,6 +930,7 @@ impl Parser {
                 TokenType::String => Type::String,
                 TokenType::Char => Type::Char,
                 TokenType::Boolean => Type::Boolean,
+                TokenType::Array => self.parse_array_type()?,
                 _ => {
                     return Err(CPSError {
                         error_type: ErrorType::Syntax,
@@ -1037,7 +1033,7 @@ impl Parser {
         let return_token = self.advance(); // consume 'return'
         let expr = self.parse_expr(0)?;
 
-        let expr = self.ast_to_expr(expr).map_err(|_| CPSError {
+        let expr = ast_to_expr(expr).map_err(|_| CPSError {
             error_type: ErrorType::Syntax,
             message: "Expected an expression after RETURN".to_string(),
             hint: Some("RETURN must be followed by a valid expression".to_string()),
@@ -1080,7 +1076,7 @@ impl Parser {
         let mut arguments: Vec<Expr> = Vec::new();
         while self.peek(0).token_type != TokenType::RParen {
             let arg = self.parse_expr(0)?;
-            arguments.push(self.ast_to_expr(arg)?);
+            arguments.push(ast_to_expr(arg)?);
 
             // check for comma after 
             if self.peek(0).token_type == TokenType::Comma {
@@ -1104,7 +1100,96 @@ impl Parser {
         Ok(Ast::Stmt(Stmt::Call { name: identifier_token.lexeme, arguments }) )
     }
 
+    fn parse_array_type(&mut self) -> Result<Type, CPSError> {
+        let open_square = self.advance();
+        if open_square.token_type != TokenType::LSquare {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected '[' after 'ARRAY'".to_string(),
+                hint: Some("Array type must specify dimensions using brackets".to_string()),
+                line: open_square.line,
+                column: open_square.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let lower_bound = self.parse_expr(0);
+        let colon_token = self.advance();
+        if colon_token.token_type != TokenType::Colon {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected ':' in array dimension declaration".to_string(),
+                hint: Some("Array dimensions must be specified as [lower:upper]".to_string()),
+                line: colon_token.line,
+                column: colon_token.column,
+                source: Some(self.source.clone()),
+            });
+        }
+        let upper_bound = self.parse_expr(0);
+        let close_square = self.advance();
+        if close_square.token_type != TokenType::RSquare {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected ']' after array dimension declaration".to_string(),
+                hint: Some("Array type must specify dimensions using brackets".to_string()),
+                line: close_square.line,
+                column: close_square.column,
+                source: Some(self.source.clone()),
+            });
+        }
+        let of_type_token = self.advance();
+        if of_type_token.token_type != TokenType::Of {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected 'OF' after array dimension declaration".to_string(),
+                hint: Some("Array type must specify the base type using 'OF'".to_string()),
+                line: of_type_token.line,
+                column: of_type_token.column,
+                source: Some(self.source.clone()),
+            });
+        }
+        let base_type_token = self.advance();
+        let base_type = match base_type_token.token_type {
+            TokenType::Integer => Type::Integer,
+            TokenType::Real => Type::Real,
+            TokenType::String => Type::String,
+            TokenType::Char => Type::Char,
+            TokenType::Boolean => Type::Boolean,
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Syntax,
+                    message: "Expected a valid data type for array base type".to_string(),
+                    hint: None,
+                    line: base_type_token.line,
+                    column: base_type_token.column,
+                    source: Some(self.source.clone()),
+                });
+            }
+        };
+        Ok(Type::Array(ArrayType {
+            lower_bound: Box::new(ast_to_expr(lower_bound?)?),
+            upper_bound: Box::new(ast_to_expr(upper_bound?)?),
+            base_type: Box::new(base_type),
+        }))
+    }
 
 
 
+
+}
+
+
+pub fn ast_to_expr(ast: Ast) -> Result<Expr, CPSError> {
+    match ast {
+        Ast::Expression(e) => Ok(e),
+        Ast::Identifier(id) => Ok(Expr::Literal(Value::Identifier(id))),
+        _ => Err(CPSError {
+            error_type: ErrorType::Syntax,
+            message: "Expected an expression".to_string(),
+            hint: Some("Make sure to provide a valid expression".to_string()),
+            line: 0,
+            column: 0,
+            source: None, // TOOD: <- fix this
+        }),
+    }
 }

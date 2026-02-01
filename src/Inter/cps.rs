@@ -34,7 +34,7 @@ pub enum Value {
     String(String),
     Boolean(bool),
     Char(char),
-    Array(Vec<Value>),
+    Array { array: Vec<Value>, lower_bound: usize } ,
     Identifier(String),
     Function(Function),
     // Record(HashMap<String, Value>),
@@ -65,7 +65,7 @@ pub struct Function {
 
 #[derive(Debug, Clone)]
 pub struct Environment {
-    bindings: HashMap<String, Value>,
+    pub bindings: HashMap<String, Value>,
     parent: Option<Rc<RefCell<Environment>>>
 }
 
@@ -134,6 +134,73 @@ impl Environment {
         }
     }
 
+    pub fn set_array_element(&mut self, name: &str, index: usize, value: Value) -> Result<(), CPSError> {
+        if let Some(current_value) = self.bindings.get_mut(name) {
+            match current_value {
+                Value::Array { array, lower_bound } => {
+                    if index < *lower_bound {
+                        let current_lb = *lower_bound;
+                        return Err(CPSError {
+                            error_type: crate::errortype::ErrorType::Runtime,
+                            message: format!(
+                                "Array index {} is below lower bound {} for '{}'",
+                                index, lower_bound, name
+                            ),
+                            hint: Some(format!("Valid indices range from {} to {}", lower_bound, current_lb + array.len() - 1)),
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        });
+                    }
+
+                    let array_index = index - *lower_bound;
+
+                    if array_index >= array.len() {
+                        let current_lb = *lower_bound;
+                        return Err(CPSError {
+                            error_type: crate::errortype::ErrorType::Runtime,
+                            message: format!(
+                                "Array index {} is out of bounds for '{}' (length: {})",
+                                index, name, array.len()
+                            ),
+                            hint: Some(format!("Valid indices range from {} to {}", lower_bound, current_lb + array.len() - 1)),
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        });
+                    }
+
+                    array[array_index] = value;
+                    return Ok(());
+                }
+                _ => {
+                    return Err(CPSError {
+                        error_type: crate::errortype::ErrorType::Runtime,
+                        message: format!("Variable '{}' is not an array", name),
+                        hint: Some("Array indexing can only be used on array variables".to_string()),
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+            }
+        }
+
+        // If not found in current scope, check parent
+        match &self.parent {
+            Some(parent_rc) => parent_rc.borrow_mut().set_array_element(name, index, value),
+            None => Err(CPSError {
+                error_type: crate::errortype::ErrorType::Runtime,
+                message: format!("Variable '{}' not found", name),
+                hint: Some("Ensure the variable is declared before use".to_string()),
+                line: 0,
+                column: 0,
+                source: None,
+            }),
+        }
+    }
+
+
     pub fn get_type(&mut self, name: &str) -> Result<Type, CPSError> {
         if let Some(value) = self.bindings.get(name) {
             let var_type = match value {
@@ -142,19 +209,53 @@ impl Environment {
                 Value::String(_) => Type::String,
                 Value::Boolean(_) => Type::Boolean,
                 Value::Char(_) => Type::Char,
-                // Value::Array(_) => Type::Array(), // Placeholder
+                Value::Array { array, lower_bound } => {
+                    Type::Array(ArrayType { 
+                    lower_bound: Box::new(Expr::Literal(Value::Integer(*lower_bound as i64))),
+                    upper_bound: Box::new(Expr::Literal(Value::Integer((array.len() + *lower_bound - 1) as i64))),
+                    base_type: Box::new(if let Some(first_elem) = array.first() {
+                        match first_elem {
+                            Value::Integer(_) => Type::Integer,
+                            Value::Real(_) => Type::Real,
+                            Value::String(_) => Type::String,
+                            Value::Boolean(_) => Type::Boolean,
+                            Value::Char(_) => Type::Char,
+                            _ => {
+                                return Err(CPSError {
+                                    error_type: crate::errortype::ErrorType::Runtime,
+                                    message: format!("Unsupported array element type for variable '{}'", name),
+                                    hint: Some("Check the array's element types.".to_string()),
+                                    line: 0,
+                                    column: 0,
+                                    source: None,
+                                });
+                            }
+                        }
+                    } else {
+                        return Err(CPSError {
+                            error_type: crate::errortype::ErrorType::Runtime,
+                            message: format!("Cannot determine base type of empty array for variable '{}'", name),
+                            hint: Some("Ensure the array is not empty.".to_string()),
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        });
+                    }
+
+                    )
+                })},
                 Value::Identifier(_) => Type::String, // Placeholder
                 Value::Function(_) => Type::Function,
-                _ => {
-                    return Err(CPSError {
-                        error_type: crate::errortype::ErrorType::Runtime,
-                        message: format!("Cannot determine type of variable '{}'", name),
-                        hint: Some("Check the variable's value.".to_string()),
-                        line: 0,
-                        column: 0,
-                        source: None,
-                    });
-                }
+                // _ => {
+                //     return Err(CPSError {
+                //         error_type: crate::errortype::ErrorType::Runtime,
+                //         message: format!("Cannot determine type of variable '{}'", name),
+                //         hint: Some("Check the variable's value.".to_string()),
+                //         line: 0,
+                //         column: 0,
+                //         source: None,
+                //     });
+                // }
             };
             return Ok(var_type);
         }

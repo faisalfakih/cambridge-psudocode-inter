@@ -41,6 +41,7 @@ pub enum Expr {
     Binary(BinaryExpr),
     Literal(Value),
     Call { name: String, arguments: Vec<Expr> },
+    ArrayAccess { name: String, index: Box<Expr> },
 }
 
 
@@ -51,7 +52,7 @@ pub enum Stmt {
     If { condition: Box<Expr>, then_branch: BlockStmt, else_branch: Option<BlockStmt> },
     While { condition: Box<Expr>, body: BlockStmt },
     For { identifier: String, start: Box<Expr>, end: Box<Expr>, body: BlockStmt },
-    Assignment { identifier: String, value: Box<Ast> },
+    Assignment { identifier: String, array_index: Option<Expr>, value: Box<Ast> },
     Decleration { identifier: String, type_: Type},
     Input { identifier: String }, 
     Output { target: Expr },
@@ -127,6 +128,9 @@ impl Expr {
             Expr::Call { name, arguments } => {
                 let args: Vec<String> = arguments.iter().map(|arg| arg.to_prefix()).collect();
                 format!("CALL {}({})", name, args.join(", "))
+            },
+            Expr::ArrayAccess { name, index } => {
+                format!("{}[{}]", name, index.to_prefix())
             }
         }
     }
@@ -171,8 +175,12 @@ impl Stmt {
                 result.push_str(&format!("{}ENDFOR", indent_str));
                 result
             }
-            Stmt::Assignment { identifier, value } => {
-                format!("{}ASSIGN {} = {}", indent_str, identifier, value.to_prefix())
+            Stmt::Assignment { identifier, array_index, value } => {
+                if let Some(index) = array_index {
+                    format!("{}{}[{}] <- {}", indent_str, identifier, index.to_prefix(), value.to_prefix())
+                } else {
+                    format!("{}{} <- {}", indent_str, identifier, value.to_prefix())
+                }
             }
             Stmt::Decleration { identifier, type_ } => {
                 format!("{}DECLARE {} : {:?}", indent_str, identifier, type_)

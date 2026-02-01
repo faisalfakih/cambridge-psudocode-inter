@@ -1,9 +1,11 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::errortype::{CPSError, ErrorType};
-use crate::Inter::cps::{Environment, Function, Type, Value};
+use crate::Inter::cps::{ArrayType, Environment, Function, Type, Value};
 use crate::Lexer::lexer::TokenType;
+use crate::Parser;
 use crate::Parser::ast::{Ast, BinaryExpr, BlockStmt, Expr, Stmt};
+use crate::Parser::parser::ast_to_expr;
 
 const BUILTIN_FUNCTIONS: &[&str] = &[
     "RIGHT",
@@ -79,7 +81,7 @@ impl Interpreter {
         match statement {
             Stmt::Output { target } => self.evaluate_output_stmt(target),
             Stmt::Decleration { identifier, type_ } => self.evaluate_declaration_stmt(identifier, type_),
-            Stmt::Assignment { identifier, value } => self.evaluate_assignment_stmt(identifier, value),
+            Stmt::Assignment { identifier, array_index, value } => self.evaluate_assignment_stmt(identifier, value, array_index),
             Stmt::Input { identifier } => self.evaluate_input_stmt(identifier),
             Stmt::If { condition, then_branch, else_branch } => self.evaluate_if_stmt(condition, then_branch, else_branch),
             Stmt::While { condition, body } => self.evaluate_while_stmt(condition, body),
@@ -110,9 +112,25 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_assignment_stmt(&mut self, identifier: &String, value: &Ast) -> Result<(), CPSError> {
+    fn evaluate_assignment_stmt(&mut self, identifier: &String, value: &Ast, array_index: &Option<Expr>) -> Result<(), CPSError> {
         let value_expression = match value {
             Ast::Expression(expr) => expr,
+            Ast::Identifier(name) => {
+                let v = self.current_env
+                    .borrow()
+                    .get(name)
+                    .ok_or_else(|| CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Undefined identifier: {}", name),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    })?;
+                let expr = ast_to_expr(Ast::Expression(Expr::Literal(v)))?;
+                &expr.clone()
+
+            }
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
@@ -126,47 +144,12 @@ impl Interpreter {
         };
 
 
-        let val = self.evaluate_expr(value_expression)?;
+        let mut val = self.evaluate_expr(value_expression)?;
 
         let expected_type = self.current_env.borrow_mut().get_type(identifier)?;
 
-        let actual_type = match &val {
-            Value::Integer(_) => Type::Integer,
-            Value::Real(_) => Type::Real,
-            Value::String(_) => Type::String,
-            Value::Boolean(_) => Type::Boolean,
-            Value::Char(_) => Type::Char,
-            Value::Array(_) => {
-                return Err(CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("Array assignment not supported for '{}'", identifier),
-                    hint: None,
-                    line: 0,
-                    column: 0,
-                    source: None,
-                });
-            },
-            Value::Identifier(_) => {
-                return Err(CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("Cannot assign unresolved identifier to '{}'", identifier),
-                    hint: None,
-                    line: 0,
-                    column: 0,
-                    source: None,
-                });
-            },
-            Value::Function(_) => {
-                return Err(CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("Cannot assign function to '{}'", identifier),
-                    hint: None,
-                    line: 0,
-                    column: 0,
-                    source: None,
-                });
-            },
-        };
+        let actual_type = self.find_actual_type(&val, identifier)?;
+
 
         let converted_val = match (&val, &expected_type, &actual_type) {
             (Value::Real(r), Type::Integer, Type::Real) => Value::Integer(*r as i64),
@@ -174,6 +157,30 @@ impl Interpreter {
             (Value::Integer(i), Type::Real, Type::Integer) => Value::Real(*i as f64),
 
             _ if actual_type == expected_type => val.clone(),
+
+
+            (_, Type::Array(arr_type), _) if array_index.is_some() => {
+                let can_be_converted = check_if_type_can_be_converted(&val, &*arr_type.base_type);
+                if actual_type == *arr_type.base_type || can_be_converted {
+                    if can_be_converted {
+                        val = convert_values_to_base_type(&val, &*arr_type.base_type)?;
+                    }
+                    val.clone()
+                } else {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!(
+                            "Type mismatch: cannot assign {:?} to array element of type {:?}",
+                            actual_type, arr_type.base_type
+                        ),
+                        hint: Some("Array element type must match the array's base type".to_string()),
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+            }
+
 
             _ => {
                 return Err(CPSError {
@@ -190,18 +197,126 @@ impl Interpreter {
             }
         };
 
+        match array_index {
+            Some(idx) => {
+                let index_value = self.evaluate_expr(idx)?;
+
+                let index_int = match index_value {
+                    Value::Integer(n) => n as isize,
+                    Value::Real(r) => {
+                        if r.fract() != 0.0 {
+                            return Err(CPSError {
+                                error_type: ErrorType::Runtime,
+                                message: format!("Array index must be an integer, got real number: {}", r),
+                                hint: None,
+                                line: 0,
+                                column: 0,
+                                source: None,
+                            });
+                        }
+                        r as isize
+                    }
+                    _ => {
+                        return Err(CPSError {
+                            error_type: ErrorType::Runtime,
+                            message: format!("Array index must be an integer, got: {:?}", index_value),
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        });
+                    }
+                };
+
+                // now set the array element at index
+                self.current_env
+                    .borrow_mut()
+                    .set_array_element(identifier, index_int as usize, converted_val)
+                    .map_err(|e| CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Failed to assign value to array element '{}[{}]': {}", identifier, index_int, e.message),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    })
+            }
+            None => {
+            self.current_env
+                .borrow_mut()
+                .set(identifier, converted_val)
+                .map_err(|e| CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Failed to assign value to '{}': {}", identifier, e.message),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                })
+            }
+        }
+
         
-        self.current_env
-            .borrow_mut()
-            .set(identifier, converted_val)
-            .map_err(|e| CPSError {
+    }
+
+    fn find_actual_type(&self, val: &Value, identifier: &String) -> Result<Type, CPSError> {
+        match val {
+            Value::Integer(_) => Ok(Type::Integer),
+            Value::Real(_) => Ok(Type::Real),
+            Value::String(_) => Ok(Type::String),
+            Value::Boolean(_) => Ok(Type::Boolean),
+            Value::Char(_) => Ok(Type::Char),
+            Value::Array { array, lower_bound } => {
+                let first_elem = array.first().ok_or_else(|| CPSError {
+                    error_type: crate::errortype::ErrorType::Runtime,
+                    message: format!("Cannot determine base type of empty array for variable '{}'", identifier),
+                    hint: Some("Ensure the array is not empty.".to_string()),
+                    line: 0,
+                    column: 0,
+                    source: None,
+                })?;
+
+                let base_type = match first_elem {
+                    Value::Integer(_) => Type::Integer,
+                    Value::Real(_) => Type::Real,
+                    Value::String(_) => Type::String,
+                    Value::Boolean(_) => Type::Boolean,
+                    Value::Char(_) => Type::Char,
+                    _ => {
+                        return Err(CPSError {
+                            error_type: crate::errortype::ErrorType::Runtime,
+                            message: format!("Unsupported array element type for variable '{}'", identifier),
+                            hint: Some("Check the array's element types.".to_string()),
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        });
+                    }
+                };
+
+                Ok(Type::Array(ArrayType {
+                    lower_bound: Box::new(Expr::Literal(Value::Integer(*lower_bound as i64))),
+                    upper_bound: Box::new(Expr::Literal(Value::Integer((array.len() + *lower_bound - 1) as i64))),
+                    base_type: Box::new(base_type),
+                }))
+            }
+            Value::Identifier(_) => Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Failed to assign value to '{}': {}", identifier, e.message),
+                message: format!("Cannot assign unresolved identifier to '{}'", identifier),
                 hint: None,
                 line: 0,
                 column: 0,
                 source: None,
-            })
+            }),
+            Value::Function(_) => Err(CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!("Cannot assign function to '{}'", identifier),
+                hint: None,
+                line: 0,
+                column: 0,
+                source: None,
+            }),
+        }
     }
 
     fn evaluate_for(&mut self, identifier: &String, start: &Expr, end: &Expr, body: &BlockStmt) -> Result<(), CPSError> {
@@ -423,6 +538,85 @@ impl Interpreter {
             Type::String => Value::String(String::new()),
             Type::Boolean => Value::Boolean(false),
             Type::Char => Value::Char('\0'),
+            Type::Array(arr) => {
+                let lower = match self.evaluate_expr(&arr.lower_bound)? {
+                    Value::Integer(n) => n,
+                    Value::Real(r) => r as i64,
+                    _ => {
+                        return Err(CPSError {
+                            error_type: ErrorType::Runtime,
+                            message: "Array lower bound must be an integer".to_string(),
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        });
+                    }
+                };
+
+                let upper = match self.evaluate_expr(&arr.upper_bound)? {
+                    Value::Integer(n) => n,
+                    Value::Real(r) => r as i64,
+                    _ => {
+                        return Err(CPSError {
+                            error_type: ErrorType::Runtime,
+                            message: "Array upper bound must be an integer".to_string(),
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        });
+                    }
+                };
+
+                if upper < lower {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Array upper bound {} cannot be less than lower bound {}", upper, lower),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+
+                let length = (upper - lower + 1) as usize;
+
+                let default_value = match &*arr.base_type {
+                    Type::Integer => Value::Integer(0),
+                    Type::Real => Value::Real(0.0),
+                    Type::String => Value::String(String::new()),
+                    Type::Boolean => Value::Boolean(false),
+                    Type::Char => Value::Char('\0'),
+                    Type::Array(inner_arr) => {
+                        return Err(CPSError {
+                            error_type: ErrorType::Runtime,
+                            message: format!("Multidimensional arrays not supported yet: {:?}", inner_arr),
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        });
+                    }
+                    _ => {
+                        return Err(CPSError {
+                            error_type: ErrorType::Runtime,
+                            message: format!("Unsupported array element type: {:?}", arr.base_type),
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        });
+                    }
+                };
+
+
+
+                Value::Array { 
+                    array: vec![default_value; length], 
+                    lower_bound: lower as usize
+                }
+            },
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
@@ -638,6 +832,7 @@ impl Interpreter {
             Expr::Binary(expr) => self.evaluate_binary(expr),
             Expr::Literal(value) => self.evaluate_literal(value),
             Expr::Call { name, arguments } => self.evaluate_call(name, arguments),
+            Expr::ArrayAccess { name, index } => self.evaluate_array_access(name, index),
             // _ => {
             //     return Err(CPSError {
             //         error_type: ErrorType::Runtime,
@@ -648,6 +843,96 @@ impl Interpreter {
             //         source: None,
             //     });
             // }
+        }
+    }
+
+    fn evaluate_array_access(&mut self, name: &String, index: &Box<Expr>) -> Result<Value, CPSError> { 
+        let index_value = self.evaluate_expr(index)?;
+        let index_int = match index_value {
+            Value::Integer(n) => n as isize,
+            Value::Real(r) => {
+                if r.fract() != 0.0 {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Array index must be an integer, got real number: {}", r),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+                r as isize
+            }
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Array index must be an integer, got: {:?}", index_value),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        };
+
+        let array_value = self.current_env
+            .borrow()
+            .get(name)
+            .ok_or_else(|| CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!("Undefined array identifier: {}", name),
+                hint: None,
+                line: 0,
+                column: 0,
+                source: None,
+            })?;
+        match array_value {
+            Value::Array { array, lower_bound } => {
+                if index_int < 0 {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Array index cannot be negative for '{}': {}", name, index_int),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+
+
+                if index_int < lower_bound as isize {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Array index lower than lower bound for '{}': {}", name, index_int),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+
+                let adjusted_idx = index_int as usize - lower_bound;
+                if adjusted_idx >= array.len() {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Array index out of bounds for '{}': {}", name, index_int),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+
+                Ok(array[adjusted_idx].clone())
+            }
+            _ => Err(CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!("Identifier '{}' is not an array", name),
+                hint: None,
+                line: 0,
+                column: 0,
+                source: None,
+            })
         }
     }
 
@@ -1143,8 +1428,36 @@ fn check_if_type_can_be_converted(value: &Value, target_type: &Type) -> bool {
 
 fn convert_values_to_compatible_types(value1: &Value, value2: &Value) -> (Value, Value) {
     match (value1, value2) {
-        (Value::Integer(i), Value::Real(r)) => (Value::Real(*i as f64), Value::Real(*r)),
-        (Value::Real(r), Value::Integer(i)) => (Value::Real(*r), Value::Real(*i as f64)),
-        _ => (value1.clone(), value2.clone()),
+        (Value::Integer(i), Value::Real(r)) => 
+        {
+            (Value::Real(*i as f64), Value::Real(*r))
+        },
+        (Value::Real(r), Value::Integer(i)) => {
+            (Value::Real(*r), Value::Real(*i as f64))
+        }
+        _ => {
+            (value1.clone(), value2.clone())
+        },
+    }
+}
+
+
+fn convert_values_to_base_type(value: &Value, target_type: &Type) -> Result<Value, CPSError> {
+    match (value, target_type) {
+        (Value::Integer(i), Type::Real) => Ok(Value::Real(*i as f64)),
+        (Value::Real(r), Type::Integer) => {
+            if r.fract() != 0.0 {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Cannot convert real number with fractional part to integer: {}", r),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+            Ok(Value::Integer(*r as i64))
+        },
+        _ => Ok(value.clone()),
     }
 }

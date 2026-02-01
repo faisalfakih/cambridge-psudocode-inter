@@ -16,6 +16,7 @@ This interpreter is designed to help students and educators work with Cambridge 
   - `STRING` - Text data
   - `CHAR` - Single characters
   - `BOOLEAN` - True/False values
+  - `ARRAY` - One-dimensional arrays (2d arrays in progress)
 - **Variable Operations**
   - `DECLARE` statements with type annotations
   - Assignment using `<-` operator
