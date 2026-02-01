@@ -1400,6 +1400,21 @@ fn check_if_type_can_be_converted(value: &Value, target_type: &Type) -> bool {
         (Value::Boolean(_), Type::Boolean) => true,
         (Value::Char(_), Type::Char) => true,
         (Value::Integer(_), Type::Real) => true,
+        (Value::Array { array, lower_bound: _ }, Type::Array(arr_type)) => {
+            match arr_type {
+                ArrayType { lower_bound: _, upper_bound: _, base_type } => {
+                    if array.is_empty() {
+                        return true; // empty array can be converted
+                    }
+                    for element in array {
+                        if !check_if_type_can_be_converted(element, *&base_type) {
+                            return false;
+                        }
+                    }
+                    true
+                }
+            }
+        }
         (Value::Real(_), Type::Integer) => {
             if let Value::Real(f) = value {
                 f.fract() == 0.0
