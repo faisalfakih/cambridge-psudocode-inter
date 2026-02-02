@@ -50,6 +50,7 @@ pub enum Expr {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
     If { condition: Box<Expr>, then_branch: BlockStmt, else_branch: Option<BlockStmt> },
+    Case { identifier: Box<Expr>, cases: Vec<(CaseCondition, BlockStmt)>, otherwise: Option<BlockStmt> },
     While { condition: Box<Expr>, body: BlockStmt },
     Repeat { body: BlockStmt, until: Box<Expr> },
     For { identifier: String, start: Box<Expr>, end: Box<Expr>, body: BlockStmt },
@@ -72,6 +73,20 @@ pub enum Stmt {
     Return { value: Box<Expr> },
     Call { name: String, arguments: Vec<Expr> },
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CaseArm {
+    pub condition: CaseCondition,
+    pub statements: BlockStmt,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CaseCondition {
+    Single(Expr),
+    Range(Expr, Expr), // value1 TO value2
+}
+
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockStmt {
@@ -156,6 +171,32 @@ impl Stmt {
                     }
                 }
                 result.push_str(&format!("{}ENDIF", indent_str));
+                result
+            }
+            Stmt::Case { identifier, cases, otherwise } => {
+                let mut result = format!("{}CASE {}\n", indent_str, identifier.to_prefix());
+                for (condition, block) in cases {
+                    match condition {
+                        CaseCondition::Single(expr) => {
+                            result.push_str(&format!("{}  WHEN {} THEN\n", indent_str, expr.to_prefix()));
+                        }
+                        CaseCondition::Range(start, end) => {
+                            result.push_str(&format!("{}  WHEN {} TO {} THEN\n", indent_str, start.to_prefix(), end.to_prefix()));
+                        }
+                    }
+                    for stmt in &block.statements {
+                        result.push_str(&stmt.to_prefix(indent + 2));
+                        result.push('\n');
+                    }
+                }
+                if let Some(otherwise_block) = otherwise {
+                    result.push_str(&format!("{}  OTHERWISE\n", indent_str));
+                    for stmt in &otherwise_block.statements {
+                        result.push_str(&stmt.to_prefix(indent + 2));
+                        result.push('\n');
+                    }
+                }
+                result.push_str(&format!("{}ENDCASE", indent_str));
                 result
             }
             Stmt::Repeat { body, until } => {

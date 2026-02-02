@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::Inter::cps::{ArrayType, Type, Value};
 use crate::Lexer::{lexer::Token, lexer::TokenType};
 use crate::errortype::{CPSError, ErrorType};
-use crate::Parser::ast::{BinaryExpr, BlockStmt, Expr};
+use crate::Parser::ast::{BinaryExpr, BlockStmt, CaseCondition, Expr};
 use super::ast::{Ast, Operator, Position, Associativity, Precedence, Stmt};
 
 
@@ -338,41 +338,62 @@ impl Parser {
         let mut ast = vec![]; 
         loop {
             let token = self.peek(0);
-            let statement = match token.token_type {
-                TokenType::If => self.parse_if_statement(),
-                TokenType::While => self.parse_while_statement(),
-                TokenType::Repeat => self.parse_repeat_statement(),
-                TokenType::Output => self.parse_output(),
-                TokenType::Input => self.parse_input(),
-                TokenType::Declare => self.parse_declaration(),
-                TokenType::Identifier => self.parse_assignment(),
-                TokenType::For => self.parse_for_statement(),
-                TokenType::Procedure => self.parse_procedure(),
-                TokenType::Function => self.parse_function(),
-                TokenType::Return => self.parse_return(),
-                TokenType::Call => self.parse_call(),
-                // terminate if it leaves the scope
-                TokenType::Eof | TokenType::EndIf | TokenType::EndCase | TokenType::EndType | TokenType::Else | TokenType::Next | TokenType::Until
-                    | TokenType::EndClass | TokenType::EndWhile | TokenType::EndFunction | TokenType::EndProcedure => break,
-                _ => {
-                    return Err(CPSError { 
-                        error_type: ErrorType::Syntax,
-                        message: format!("Unexpected token in statement: {:?}", token.token_type),
-                        hint: Some("Expected a valid statement".to_string()),
-                        line: token.line,
-                        column: token.column,
-                        source: Some(self.source.clone()),
-                    })
-                }
-            };
+            let statement = self.parse_statement(token);
+
             match statement {
-                Err(e) => return Err(e),
-                _ => {}
+                Ok(stmt) => ast.push(stmt),
+                Err((e, should_break)) => {
+                    if should_break {
+                        break;
+                    }
+                    return Err(e);
+                }
             }
-            ast.push(statement?);
         }
         Ok(ast)
     }
+
+    fn parse_statement(&mut self, token: Token) -> Result<Ast, (CPSError, bool)> {
+        match token.token_type {
+            TokenType::If => self.parse_if_statement().map_err(|e| (e, false)),
+            TokenType::Case => self.parse_case_statement().map_err(|e| (e, false)),
+            TokenType::While => self.parse_while_statement().map_err(|e| (e, false)),
+            TokenType::Repeat => self.parse_repeat_statement().map_err(|e| (e, false)),
+            TokenType::Output => self.parse_output().map_err(|e| (e, false)),
+            TokenType::Input => self.parse_input().map_err(|e| (e, false)),
+            TokenType::Declare => self.parse_declaration().map_err(|e| (e, false)),
+            TokenType::Identifier => self.parse_assignment().map_err(|e| (e, false)),
+            TokenType::For => self.parse_for_statement().map_err(|e| (e, false)),
+            TokenType::Procedure => self.parse_procedure().map_err(|e| (e, false)),
+            TokenType::Function => self.parse_function().map_err(|e| (e, false)),
+            TokenType::Return => self.parse_return().map_err(|e| (e, false)),
+            TokenType::Call => self.parse_call().map_err(|e| (e, false)),
+            // terminate if it leaves the scope
+            TokenType::Eof | TokenType::EndIf | TokenType::EndCase | TokenType::EndType | 
+                TokenType::Else | TokenType::Next | TokenType::Until | TokenType::EndClass | 
+                TokenType::EndWhile | TokenType::EndFunction | TokenType::EndProcedure => {
+                    Err((CPSError {
+                        error_type: ErrorType::Syntax,
+                        message: "Loop terminator".to_string(),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    }, true))
+            }
+            _ => {
+                Err((CPSError { 
+                    error_type: ErrorType::Syntax,
+                    message: format!("Unexpected token in statement: {:?}", token.token_type),
+                    hint: Some("Expected a valid statement".to_string()),
+                    line: token.line,
+                    column: token.column,
+                    source: Some(self.source.clone()),
+                }, false))
+            }
+        }
+    }
+
 
     fn parse_output(&mut self) -> Result<Ast, CPSError> {
         // consume 'output' token
@@ -507,6 +528,161 @@ impl Parser {
             },
         }))
     }
+
+    fn parse_case_statement(&mut self) -> Result<Ast, CPSError> {
+        let _ = self.advance(); // consume 'case'
+        let of_token = self.advance();
+        if of_token.token_type != TokenType::Of {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected 'OF' after CASE".to_string(),
+                hint: Some("CASE statements must have an OF clause".to_string()),
+                line: of_token.line,
+                column: of_token.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let identifier = self.parse_expr(0)?;
+        let identifier_expr = ast_to_expr(identifier)?;
+
+        let mut cases: Vec<(CaseCondition, BlockStmt)> = Vec::new();
+        let mut otherwise: Option<BlockStmt> = None;
+
+        loop {
+            let token = self.peek(0);
+
+            if token.token_type == TokenType::EndCase {
+                self.advance(); // consume 'endcase'
+                break;
+            }
+
+            // Check for OTHERWISE clause
+            if token.token_type == TokenType::Otherwise {
+                self.advance(); // consume 'otherwise'
+                let colon_token = self.advance();
+                if colon_token.token_type != TokenType::Colon {
+                    return Err(CPSError {
+                        error_type: ErrorType::Syntax,
+                        message: "Expected ':' after OTHERWISE".to_string(),
+                        hint: Some("OTHERWISE clause must be followed by a colon".to_string()),
+                        line: colon_token.line,
+                        column: colon_token.column,
+                        source: Some(self.source.clone()),
+                    });
+                }
+                let statements = self.parse_case_body()?;
+                otherwise = Some(BlockStmt { statements });
+                continue;
+            }
+
+            // Parse case option
+            let option = self.parse_expr(0)?;
+            let option_expr = ast_to_expr(option)?;
+
+            // Check if it's a range (value1 TO value2)
+            let case_condition = if self.peek(0).token_type == TokenType::To {
+                self.advance(); // consume 'to'
+                let end_value = self.parse_expr(0)?;
+                let end_expr = ast_to_expr(end_value)?;
+                CaseCondition::Range(option_expr, end_expr)
+            } else {
+                CaseCondition::Single(option_expr)
+            };
+
+            // Expect colon
+            let colon_token = self.advance();
+            if colon_token.token_type != TokenType::Colon {
+                return Err(CPSError {
+                    error_type: ErrorType::Syntax,
+                    message: "Expected ':' after case option".to_string(),
+                    hint: Some("CASE options must be followed by a colon".to_string()),
+                    line: colon_token.line,
+                    column: colon_token.column,
+                    source: Some(self.source.clone()),
+                });
+            }
+
+            let statements = self.parse_case_body()?;
+            cases.push((case_condition, BlockStmt { statements }));
+        }
+
+        Ok(Ast::Stmt(Stmt::Case {
+            identifier: Box::new(identifier_expr),
+            cases,
+            otherwise,
+        }))
+    }
+
+    fn parse_case_body(&mut self) -> Result<Vec<Stmt>, CPSError> {
+        let mut statements = Vec::new();
+
+        loop {
+            let token = self.peek(0);
+
+            if self.is_case_terminator(&token.token_type) {
+                break;
+            }
+
+            let statement = self.parse_statement(token.clone());
+
+            match statement {
+                Ok(Ast::Stmt(s)) => statements.push(s),
+                Ok(_) => {
+                    return Err(CPSError {
+                        error_type: ErrorType::Syntax,
+                        message: "Expected statement in case body".to_string(),
+                        hint: Some("CASE body must contain valid statements".to_string()),
+                        line: token.line,
+                        column: token.column,
+                        source: Some(self.source.clone()),
+                    });
+                }
+                Err((e, should_break)) => {
+                    if should_break {
+                        break;
+                    }
+                    return Err(e);
+                }
+            };
+
+            if self.is_case_terminator(&self.peek(0).token_type) {
+                break;
+            }
+        }
+
+        Ok(statements)
+    }
+
+    fn is_case_terminator(&self, token_type: &TokenType) -> bool {
+        match token_type {
+            TokenType::EndCase | TokenType::Otherwise | TokenType::Eof => true,
+            TokenType::NumberLiteral | TokenType::StringLiteral | 
+                TokenType::CharLiteral | TokenType::Identifier | 
+                TokenType::True | TokenType::False => { 
+                    self.could_be_case_label()
+                }
+            _ => false,
+        }
+    }
+
+    fn could_be_case_label(&self) -> bool {
+        match self.peek(0).token_type {
+            TokenType::NumberLiteral | TokenType::StringLiteral | 
+                TokenType::CharLiteral | TokenType::Identifier | 
+                TokenType::True | TokenType::False => {  
+                    match self.peek(1).token_type {
+                        TokenType::Colon => true,
+                        TokenType::To => true,
+                        _ => false,
+                    }
+                }
+            _ => false,
+        }
+    }
+
+
+
 
     fn parse_while_statement(&mut self) -> Result<Ast, CPSError> {
         let while_token = self.advance(); // consume 'while'

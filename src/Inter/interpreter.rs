@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::errortype::{CPSError, ErrorType};
 use crate::Inter::cps::{ArrayType, Environment, Function, Type, Value};
 use crate::Lexer::lexer::TokenType;
-use crate::Parser::ast::{Ast, BinaryExpr, BlockStmt, Expr, Stmt};
+use crate::Parser::ast::{Ast, BinaryExpr, BlockStmt, CaseCondition, Expr, Stmt};
 use crate::Parser::parser::ast_to_expr;
 
 const BUILTIN_FUNCTIONS: &[&str] = &[
@@ -83,6 +83,7 @@ impl Interpreter {
             Stmt::Assignment { identifier, array_index, value } => self.evaluate_assignment_stmt(identifier, value, array_index),
             Stmt::Input { identifier } => self.evaluate_input_stmt(identifier),
             Stmt::If { condition, then_branch, else_branch } => self.evaluate_if_stmt(condition, then_branch, else_branch),
+            Stmt::Case { identifier, cases, otherwise } => self.evaluate_case_stmt(identifier, cases, otherwise),
             Stmt::While { condition, body } => self.evaluate_while_stmt(condition, body),
             Stmt::Repeat { body, until } => self.evaluate_repeat_stmt(until, body),
             Stmt::Procedure { name, parameters, body } => self.evaluate_procedure(name, parameters, body),
@@ -506,6 +507,102 @@ impl Interpreter {
         }
         Ok(())
     }
+
+    fn evaluate_case_stmt(
+        &mut self, 
+        identifier: &Box<Expr>, 
+        cases: &Vec<(CaseCondition, BlockStmt)>, 
+        otherwise: &Option<BlockStmt>
+    ) -> Result<(), CPSError> {
+        let mut comparitor_value = self.evaluate_expr(identifier)?;
+
+        match comparitor_value {
+            Value::Identifier(iden) => {
+                comparitor_value = self.current_env.borrow().get(&iden).ok_or_else(|| CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Undefined identifier in CASE statement: {}", iden),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                })?;
+            }
+            _ => {}
+        }
+
+        for (condition, block) in cases {
+            if self.matches_case_condition(&comparitor_value, condition)? {
+                for stmt in &block.statements {
+                    self.evaluate_stmt(stmt)?;
+                }
+                return Ok(());
+            }
+        }
+
+        if let Some(otherwise_block) = otherwise {
+            for stmt in &otherwise_block.statements {
+                self.evaluate_stmt(stmt)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn matches_case_condition(&mut self, value: &Value, condition: &CaseCondition) -> Result<bool, CPSError> {
+        match condition {
+            CaseCondition::Single(case_expr) => {
+                let case_value = self.evaluate_expr(case_expr)?;
+                self.values_equal(value, &case_value)
+            }
+            CaseCondition::Range(start_expr, end_expr) => {
+                let start = self.evaluate_expr(start_expr)?;
+                let end = self.evaluate_expr(end_expr)?;
+                self.value_in_range(value, &start, &end)
+            }
+        }
+    }
+
+    fn values_equal(&self, a: &Value, b: &Value) -> Result<bool, CPSError> {
+        let (a_converted, b_converted) = convert_values_to_compatible_types(a, b);
+
+        match (&a_converted, &b_converted) {
+            (Value::Integer(x), Value::Integer(y)) => Ok(x == y),
+            (Value::Real(x), Value::Real(y)) => Ok((x - y).abs() < f64::EPSILON),
+            (Value::String(x), Value::String(y)) => Ok(x == y),
+            (Value::Char(x), Value::Char(y)) => Ok(x == y),
+            (Value::Boolean(x), Value::Boolean(y)) => Ok(x == y),
+            _ => Ok(false),
+        }
+    }
+
+    fn value_in_range(&mut self, value: &Value, start: &Value, end: &Value) -> Result<bool, CPSError> {
+        let (value_conv, start_conv) = convert_values_to_compatible_types(value, start);
+        let (value_final, end_conv) = convert_values_to_compatible_types(&value_conv, end);
+
+        match (&value_final, &start_conv, &end_conv) {
+            (Value::Integer(v), Value::Integer(s), Value::Integer(e)) => {
+                Ok(*v >= *s && *v <= *e)
+            }
+            (Value::Real(v), Value::Real(s), Value::Real(e)) => {
+                Ok(*v >= *s && *v <= *e)
+            }
+            (Value::String(v), Value::String(s), Value::String(e)) => {
+                Ok(v >= s && v <= e)
+            }
+            (Value::Char(v), Value::Char(s), Value::Char(e)) => {
+                Ok(*v >= *s && *v <= *e)
+            }
+            _ => Err(CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!("Invalid range comparison: {:?} TO {:?} for value {:?}", start, end, value),
+                hint: Some("Range values must be compatible types".to_string()),
+                line: 0,
+                column: 0,
+                source: None,
+            })
+        }
+    }
+
 
     fn evaluate_while_stmt(&mut self, condition: &Expr, body: &BlockStmt) -> Result<(), CPSError> {
         loop {
