@@ -2,6 +2,110 @@
 
 A Rust-based interpreter for Cambridge International AS & A Level Computer Science (9618) pseudocode specification. This project implements a complete interpreter capable of parsing and executing pseudocode according to the Cambridge syllabus standards.
 
+## 📦 Installation
+
+### Quick Install (Recommended)
+
+If you have Rust and Cargo installed:
+
+> **Don't have Rust?** Install it from [rustup.rs](https://rustup.rs/) - it takes less than a minute!
+
+```bash
+cargo install cambridge-pseudocode-interpreter
+```
+
+After installation, the `cps` command will be available globally:
+
+```bash
+cps --version
+cps --help
+```
+
+### Install from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/faisalfakih/cambridge-pseudocode-inter.git
+cd cambridge-pseudocode-inter
+
+# Build and install
+cargo install --path .
+```
+
+### Manual Installation
+
+#### Linux/macOS
+
+```bash
+# Clone and build
+git clone https://github.com/faisalfakih/cambridge-pseudocode-inter.git
+cd cambridge-pseudocode-inter
+cargo build --release
+
+# Copy to system path (requires sudo)
+sudo cp target/release/cps /usr/local/bin/
+
+# Or copy to user directory (no sudo needed)
+mkdir -p ~/.local/bin
+cp target/release/cps ~/.local/bin/
+# Add to PATH: export PATH="$HOME/.local/bin:$PATH"
+```
+
+#### Windows
+
+```batch
+# Clone and build
+git clone https://github.com/faisalfakih/cambridge-pseudocode-inter.git
+cd cambridge-pseudocode-inter
+cargo build --release
+
+# Copy to Windows directory
+copy target\release\cps.exe C:\Windows\System32\
+```
+
+### Prerequisites
+
+To build from source, you need:
+- Rust 1.70 or higher ([Install Rust](https://rustup.rs/))
+- Cargo (comes with Rust)
+
+## 🚀 Quick Start
+
+### Using the Interpreter
+
+Create a file named `hello.cps`:
+
+```pseudocode
+DECLARE name : STRING
+
+OUTPUT "Enter your name: "
+INPUT name
+OUTPUT "Hello, " & name & "!"
+```
+
+Run it:
+
+```bash
+cps hello.cps
+```
+
+### Command Line Options
+
+```bash
+# Run a pseudocode file
+cps program.cps
+
+# Show verbose output (tokens and AST)
+cps program.cps --verbose
+cps program.cps -v
+
+# Show help
+cps --help
+
+# Show version
+cps --version
+```
+
 ## Project Overview
 
 This interpreter is designed to help students and educators work with Cambridge 9618 pseudocode by providing a fully functional execution environment. It handles the complete pseudocode syntax including variable declarations, control structures, expressions, and I/O operations.
@@ -16,33 +120,39 @@ This interpreter is designed to help students and educators work with Cambridge 
   - `STRING` - Text data
   - `CHAR` - Single characters
   - `BOOLEAN` - True/False values
-  - `ARRAY` - One-dimensional arrays (2d arrays in progress)
+  - `ARRAY` - One-dimensional arrays (2D arrays in progress)
+  
 - **Variable Operations**
   - `DECLARE` statements with type annotations
   - Assignment using `<-` operator
   - Proper variable scoping
+  
 - **Control Structures**
   - `IF...THEN...ELSE...ENDIF` conditionals
-  - `CASE...OF...ENDCASE` statements
+  - `CASE...OF...ENDCASE` statements with ranges
   - `WHILE...ENDWHILE` loops
-  - `FOR...TO...NEXT` loops with integer iteration
+  - `REPEAT...UNTIL` loops
+  - `FOR...TO...NEXT` loops with STEP support
   - `FUNCTIONS` and `PROCEDURES` with return values and parameters
+  
 - **Operators**
   - Arithmetic: `+`, `-`, `*`, `/`, `DIV`, `MOD`, `^` (power)
   - Comparison: `=`, `<>`, `<`, `<=`, `>`, `>=`
-  - Logical: `AND`, `OR`
+  - Logical: `AND`, `OR`, `NOT`
   - String concatenation: `&`
+  
 - **I/O Operations**
   - `OUTPUT` - Display values to console
-  - `INPUT` - Read user input as strings
+  - `INPUT` - Read user input
+  
 - **Built-in Functions**
-  - `RIGHT(string, length)` - Extract rightmost characters from a string
-  - `LENGTH(string)` - Get the length of a string
+  - `RIGHT(string, length)` - Extract rightmost characters
+  - `LENGTH(string)` - Get string length
   - `MID(string, start, length)` - Extract substring (1-indexed)
-  - `LCASE(string)` - Convert string to lowercase
-  - `UCASE(string)` - Convert string to uppercase
-  - `INT(value)` - Convert real/integer/string to integer via floor operation (enhanced from standard to accept strings)
-  - `RAND(max)` - Generate random real number in range [0, max)
+  - `LCASE(string)` - Convert to lowercase
+  - `UCASE(string)` - Convert to uppercase
+  - `INT(value)` - Convert to integer
+  - `RAND(max)` - Generate random number [0, max)
 
 ## 💡 Motivation
 
@@ -54,12 +164,6 @@ As a student working with the Cambridge International curriculum myself, I exper
 - **Learning by doing** - Enable experimentation and iterative development
 - **Community resource** - Provide a free tool for fellow students and educators worldwide
 - **Skill demonstration** - Showcase compiler theory, type systems, and Rust proficiency
-
-Building this project has deepened my understanding of:
-- Lexical analysis and tokenization
-- Parsing algorithms (specifically Pratt parsing)
-- Type systems and runtime environments
-- Error handling and user experience in developer tools
 
 ## 🏗️ Architecture
 
@@ -80,7 +184,7 @@ Source Code → Lexer → Parser → Interpreter → Output
    - Builds Abstract Syntax Tree (AST)
    - Validates syntax according to Cambridge specification
 
-3. **Interpreter** (`Inter/interpreter.rs`, `Inter/cps.rs`)
+3. **Interpreter** (`Inter/interpreter.rs`)
    - Evaluates AST nodes
    - Manages runtime environment and variable storage
    - Performs type checking and conversion
@@ -91,47 +195,64 @@ Source Code → Lexer → Parser → Interpreter → Output
    - Helpful hints for common mistakes
    - Runtime and syntax error differentiation
 
-## Getting Started
+## 📚 Example Programs
 
-### Prerequisites
-
-- Rust 1.70 or higher
-- Cargo (comes with Rust)
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/faisalfakih/cambridge-pseudocode-interpreter.git
-cd cambridge-pseudocode-interpreter
-
-# Build the project
-cargo build --release
-```
-
-### Usage
-
-```bash
-# Run the interpreter
-cargo run
-
-# Or run the compiled binary
-./target/release/cambridge-pseudocode-interpreter
-```
-
-### Example Program
+### Hello World
 
 ```pseudocode
-DECLARE Value : INTEGER
-DECLARE Counter : INTEGER
+OUTPUT "Hello, World!"
+```
 
-Value <- 10
+### Variable Operations
 
-FOR Counter <- 1 TO Value
-    OUTPUT Counter
-NEXT Counter
+```pseudocode
+DECLARE x : INTEGER
+DECLARE y : INTEGER
+DECLARE result : INTEGER
 
-OUTPUT "Loop complete!"
+x <- 10
+y <- 20
+result <- x + y
+
+OUTPUT "Sum: " & result
+```
+
+### Loops and Conditionals
+
+```pseudocode
+DECLARE i : INTEGER
+
+FOR i <- 1 TO 10
+    IF i MOD 2 = 0 THEN
+        OUTPUT i & " is even"
+    ELSE
+        OUTPUT i & " is odd"
+    ENDIF
+NEXT i
+```
+
+### Arrays
+
+```pseudocode
+DECLARE numbers : ARRAY[1:5] OF INTEGER
+DECLARE i : INTEGER
+
+FOR i <- 1 TO 5
+    numbers[i] <- i * 10
+    OUTPUT numbers[i]
+NEXT i
+```
+
+### Functions
+
+```pseudocode
+FUNCTION Square(n : INTEGER) RETURNS INTEGER
+    RETURN n * n
+ENDFUNCTION
+
+DECLARE result : INTEGER
+result <- Square(5)
+OUTPUT "5 squared is " & result
 ```
 
 ## Language Syntax
@@ -162,10 +283,29 @@ WHILE condition
     // statements
 ENDWHILE
 
+// Repeat-Until loop
+REPEAT
+    // statements
+UNTIL condition
+
 // For loop
 FOR counter <- start TO end
     // statements
 NEXT counter
+
+// For loop with step
+FOR counter <- start TO end STEP increment
+    // statements
+NEXT counter
+```
+
+### Case Statements
+```pseudocode
+CASE OF variable
+    value1 : // statements
+    value2 TO value3 : // statements
+    OTHERWISE : // statements
+ENDCASE
 ```
 
 ### Input/Output
@@ -185,7 +325,6 @@ The interpreter implements a strict type system with runtime type checking:
   - Variable assignment (Real → Integer or Integer → Real based on declared type)
   - Input operations (string input converted to declared variable type)
   - Arithmetic operations (mixed Integer/Real operations promote to Real)
-  - This is mainly done for simplicity
 
 ### Expression Evaluation
 
@@ -208,19 +347,10 @@ The interpreter implements a strict type system with runtime type checking:
 - Variable lookup traverses scope chain
 - Type information stored alongside values
 
-## Testing
-
-```bash
-# Run all tests
-cargo test
-
-# Run with verbose output
-cargo test -- --nocapture
-```
 
 ## Current Status
 
-### Implemented
+### ✅ Implemented
 - Complete lexer with all Cambridge pseudocode tokens
 - Full expression parser with operator precedence
 - Statement parsing (declarations, assignments, control structures)
@@ -228,14 +358,18 @@ cargo test -- --nocapture
 - Variable environment with scoping
 - I/O operations
 - All basic data types
+- Arrays (1D)
+- Functions and procedures
+- All loop types (FOR, WHILE, REPEAT)
+- CASE statements with ranges
 
-### In Progress
-- Array support
-- Procedure and function definitions
+### 🚧 In Progress
+- 2D array support
 - File I/O operations
+- User-defined types
 
-### Planned
-- Support for A-Level specific features
+### 📋 Planned
+- Advanced A-Level features
 
 ## Contributing
 
@@ -250,11 +384,12 @@ Contributions are welcome! This project is being developed as part of learning c
 
 ## Resources
 
-- [Cambridge Pseudocode Guide for Teachers](https://www.cambridgeinternational.org/Images/697401-2026-pseudocode-guide-for-teachers.pdf)
+- [Cambridge Pseudocode Guide for Teachers (PDF)](https://www.cambridgeinternational.org/Images/697401-2026-pseudocode-guide-for-teachers.pdf)
+- [Project Repository](https://github.com/faisalfakih/cambridge-pseudocode-inter)
 
 ## License
 
-This project is available for educational purposes. See LICENSE file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
@@ -264,7 +399,9 @@ This project is available for educational purposes. See LICENSE file for details
 
 ## 📧 Contact
 
-For questions, suggestions, or discussions about the project, feel free to open an issue on GitHub.
+For questions, suggestions, or discussions about the project:
+- Open an issue on [GitHub](https://github.com/faisalfakih/cambridge-pseudocode-inter/issues)
+- Email: me@faisalfakih.com
 
 ---
 
