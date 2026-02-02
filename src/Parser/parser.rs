@@ -123,6 +123,20 @@ impl Parser {
                 Ok(Ast::Expression(Expr::Literal(Value::String(string_value))))
             }
 
+            TokenType::Not => {
+                self.advance(); 
+                let operand = self.parse_primary()?; 
+
+                let true_literal = Ast::Expression(Expr::Literal(Value::Boolean(true))); // convert to TRUE <> x
+
+                return Ok(Ast::Expression(Expr::Binary(BinaryExpr {
+                    left: Box::new(true_literal),
+                    operator: TokenType::NotEqual,
+                    right: Box::new(operand),
+                })));
+            }
+
+
             TokenType::True => {
                 self.advance();
                 Ok(Ast::Expression(Expr::Literal(Value::Boolean(true))))
