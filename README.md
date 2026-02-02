@@ -23,6 +23,7 @@ This interpreter is designed to help students and educators work with Cambridge 
   - Proper variable scoping
 - **Control Structures**
   - `IF...THEN...ELSE...ENDIF` conditionals
+  - `CASE...OF...ENDCASE` statements
   - `WHILE...ENDWHILE` loops
   - `FOR...TO...NEXT` loops with integer iteration
   - `FUNCTIONS` and `PROCEDURES` with return values and parameters
