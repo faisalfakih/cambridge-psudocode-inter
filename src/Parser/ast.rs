@@ -51,6 +51,7 @@ pub enum Expr {
 pub enum Stmt {
     If { condition: Box<Expr>, then_branch: BlockStmt, else_branch: Option<BlockStmt> },
     While { condition: Box<Expr>, body: BlockStmt },
+    Repeat { body: BlockStmt, until: Box<Expr> },
     For { identifier: String, start: Box<Expr>, end: Box<Expr>, body: BlockStmt },
     Assignment { identifier: String, array_index: Option<Expr>, value: Box<Ast> },
     Decleration { identifier: String, type_: Type},
@@ -155,6 +156,15 @@ impl Stmt {
                     }
                 }
                 result.push_str(&format!("{}ENDIF", indent_str));
+                result
+            }
+            Stmt::Repeat { body, until } => {
+                let mut result = format!("{}REPEAT\n", indent_str);
+                for stmt in &body.statements {
+                    result.push_str(&stmt.to_prefix(indent + 1));
+                    result.push('\n');
+                }
+                result.push_str(&format!("{}UNTIL {}", indent_str, until.to_prefix()));
                 result
             }
             Stmt::While { condition, body } => {

@@ -86,6 +86,7 @@ impl Parser {
             | TokenType::Mod | TokenType::Div
             | TokenType::Equal | TokenType::NotEqual | TokenType::LessThan | TokenType::LessEqual
             | TokenType::Identifier | TokenType::NumberLiteral | TokenType::StringLiteral | TokenType::CharLiteral
+            | TokenType::Until
             // | TokenType::True | TokenType::False
             | TokenType::LParen | TokenType::Eof
         )
@@ -340,6 +341,7 @@ impl Parser {
             let statement = match token.token_type {
                 TokenType::If => self.parse_if_statement(),
                 TokenType::While => self.parse_while_statement(),
+                TokenType::Repeat => self.parse_repeat_statement(),
                 TokenType::Output => self.parse_output(),
                 TokenType::Input => self.parse_input(),
                 TokenType::Declare => self.parse_declaration(),
@@ -350,7 +352,7 @@ impl Parser {
                 TokenType::Return => self.parse_return(),
                 TokenType::Call => self.parse_call(),
                 // terminate if it leaves the scope
-                TokenType::Eof | TokenType::EndIf | TokenType::EndCase | TokenType::EndType | TokenType::Else | TokenType::Next
+                TokenType::Eof | TokenType::EndIf | TokenType::EndCase | TokenType::EndType | TokenType::Else | TokenType::Next | TokenType::Until
                     | TokenType::EndClass | TokenType::EndWhile | TokenType::EndFunction | TokenType::EndProcedure => break,
                 _ => {
                     return Err(CPSError { 
@@ -560,6 +562,61 @@ impl Parser {
                 statements: body_statements?,
             },
         }))
+    }
+
+    fn parse_repeat_statement(&mut self) -> Result<Ast, CPSError> {
+        let repeat_token = self.advance(); // consume 'repeat'
+        // parse block statements after
+        let stmts = self.parse_statements()?;
+
+        let until_token = self.advance();
+        if until_token.token_type != TokenType::Until {
+            return Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected 'UNTIL' after REPEAT block".to_string(),
+                hint: Some("REPEAT statements must end with UNTIL".to_string()),
+                line: until_token.line,
+                column: until_token.column,
+                source: Some(self.source.clone()),
+            });
+        }
+
+        let condition = self.parse_expr(0)?;
+        let body_statements: Result<Vec<Stmt>, CPSError> = stmts.into_iter().map(|a| match a {
+            Ast::Stmt(s) => Ok(s),
+            _ => Err(CPSError {
+                error_type: ErrorType::Syntax,
+                message: "Expected statement in while body".to_string(),
+                hint: Some("WHILE statement body must contain valid statements".to_string()),
+                line: repeat_token.line,
+                column: repeat_token.column,
+                source: Some(self.source.clone()),
+            }),
+        }).collect();
+
+
+
+
+        Ok(Ast::Stmt(Stmt::Repeat {
+            body: BlockStmt {
+                statements: body_statements?,
+            },
+            until: Box::new(match condition {
+                Ast::Expression(e) => e,
+                Ast::Identifier(id) => Expr::Literal(Value::Identifier(id)),
+                _ => {
+                    return Err(CPSError {
+                        error_type: ErrorType::Syntax,
+                        message: "Invalid condition in REPEAT statement".to_string(),
+                        hint: Some("Condition must be a valid expression".to_string()),
+                        line: until_token.line,
+                        column: until_token.column,
+                        source: Some(self.source.clone()),
+                    });
+                }
+            }),
+        }))
+
     }
 
     fn parse_for_statement(&mut self) -> Result<Ast, CPSError> {

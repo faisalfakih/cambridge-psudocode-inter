@@ -1,8 +1,6 @@
-DECLARE bool : BOOLEAN
-bool <- TRUE
-
-IF NOT (2+2 = 4) THEN
-    PRINT "FALSE"
-ELSE
-    PRINT "TRUE"
-ENDIF 
+DECLARE Count : INTEGER
+Count <- 1
+REPEAT
+    PRINT Count
+    Count <- Count + 1
+UNTIL Count = 50 + 1

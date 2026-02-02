@@ -3,7 +3,6 @@ use std::{cell::RefCell, rc::Rc};
 use crate::errortype::{CPSError, ErrorType};
 use crate::Inter::cps::{ArrayType, Environment, Function, Type, Value};
 use crate::Lexer::lexer::TokenType;
-use crate::Parser;
 use crate::Parser::ast::{Ast, BinaryExpr, BlockStmt, Expr, Stmt};
 use crate::Parser::parser::ast_to_expr;
 
@@ -85,6 +84,7 @@ impl Interpreter {
             Stmt::Input { identifier } => self.evaluate_input_stmt(identifier),
             Stmt::If { condition, then_branch, else_branch } => self.evaluate_if_stmt(condition, then_branch, else_branch),
             Stmt::While { condition, body } => self.evaluate_while_stmt(condition, body),
+            Stmt::Repeat { body, until } => self.evaluate_repeat_stmt(until, body),
             Stmt::Procedure { name, parameters, body } => self.evaluate_procedure(name, parameters, body),
             Stmt::Function { name, parameters, return_type, body } => self.evaluate_function(name, parameters, return_type.to_owned(), body),
             Stmt::Call { name, arguments } => {
@@ -519,6 +519,28 @@ impl Interpreter {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
                         message: format!("Condition in WHILE statement did not evaluate to a boolean: {:?}", cond_value),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn evaluate_repeat_stmt(&mut self, condition: &Expr, body: &BlockStmt) -> Result<(), CPSError> {
+        loop {
+            self.evaluate_stmt(&Stmt::Block(body.to_owned()))?;
+            let cond_value = self.evaluate_expr(condition)?;
+            match cond_value {
+                Value::Boolean(true) => break,
+                Value::Boolean(false) => continue,
+                _ => {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Condition in REPEAT statement did not evaluate to a boolean: {:?}", cond_value),
                         hint: None,
                         line: 0,
                         column: 0,
