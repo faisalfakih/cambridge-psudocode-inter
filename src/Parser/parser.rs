@@ -428,7 +428,14 @@ impl Parser {
                 source: Some(self.source.clone()),
             });
         }
-        Ok(Ast::Stmt(Stmt::Input { identifier: identifier_token.lexeme }))
+
+        if self.peek(0).token_type == TokenType::LSquare {
+            // array access
+            let array_expr = ast_to_expr(self.parse_array_access_expr(identifier_token.clone().lexeme)?)?;
+            return Ok(Ast::Stmt(Stmt::Input { identifier: Box::new(array_expr) }));
+
+        }
+        Ok(Ast::Stmt(Stmt::Input { identifier: Box::new(Expr::Literal(Value::Identifier(identifier_token.lexeme))) }))
     }
 
     fn parse_if_statement(&mut self) -> Result<Ast, CPSError> {

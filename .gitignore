@@ -27,3 +27,6 @@ target
 
 # anything ending with .sh
 *.sh
+
+# ignore pseudocode files
+*.cps

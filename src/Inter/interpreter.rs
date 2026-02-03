@@ -457,7 +457,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn evaluate_input_stmt(&mut self, identifier: &String) -> Result<(), CPSError> {
+    fn evaluate_input_stmt(&mut self, identifier: &Box<Expr>) -> Result<(), CPSError> {
         use std::io::{self, Write};
 
         io::stdout().flush().unwrap();
@@ -466,17 +466,87 @@ impl Interpreter {
         io::stdin().read_line(&mut input).unwrap();
         let input = input.trim().to_string();
 
-        self.current_env // all inputs r treated as strings
-            .borrow_mut()
-            .set(identifier, Value::String(input))
-            .map_err(|e| CPSError {
-                error_type: ErrorType::Runtime,
-                message: format!("Failed to assign input to '{}': {}", identifier, e.message),
-                hint: None,
-                line: 0,
-                column: 0,
-                source: None,
-            })
+        match *identifier.clone() {
+            Expr::Literal(name) => {
+                match name {
+                    Value::Identifier(ref iden) => {
+                        self.current_env // all inputs r treated as strings
+                            .borrow_mut()
+                            .set(iden, Value::String(input))
+                            .map_err(|e| CPSError {
+                                error_type: ErrorType::Runtime,
+                                message: format!("Failed to assign input to '{}': {}", iden, e.message),
+                                hint: None,
+                                line: 0,
+                                column: 0,
+                                source: None,
+                            })
+                    }
+                    _ => {
+                        return Err(CPSError {
+                            error_type: ErrorType::Runtime,
+                            message: format!("INPUT statement requires an identifier, got: {:?}", name),
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        });
+                    }
+                }
+            } 
+            Expr::ArrayAccess { name, index } => {
+                let index_value = self.evaluate_expr(&index)?;
+
+                let index_int = match index_value {
+                    Value::Integer(n) => n as isize,
+                    Value::Real(r) => {
+                        if r.fract() != 0.0 {
+                            return Err(CPSError {
+                                error_type: ErrorType::Runtime,
+                                message: format!("Array index must be an integer, got real number: {}", r),
+                                hint: None,
+                                line: 0,
+                                column: 0,
+                                source: None,
+                            });
+                        }
+                        r as isize
+                    }
+                    _ => {
+                        return Err(CPSError {
+                            error_type: ErrorType::Runtime,
+                            message: format!("Array index must be an integer, got: {:?}", index_value),
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        });
+                    }
+                };
+
+                self.current_env
+                    .borrow_mut()
+                    .set_array_element(&name, index_int as usize, Value::String(input))
+                    .map_err(|e| CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Failed to assign input to array element '{}[{}]': {}", name, index_int, e.message),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    })
+            }
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("INPUT statement requires an identifier, got: {:?}", identifier),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
+            }
+        }
     }
 
     fn evaluate_if_stmt(&mut self, condition: &Expr, then_branch: &BlockStmt, else_brach: &Option<BlockStmt>) -> Result<(), CPSError> {

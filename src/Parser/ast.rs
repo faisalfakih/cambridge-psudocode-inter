@@ -56,7 +56,7 @@ pub enum Stmt {
     For { identifier: String, start: Box<Expr>, end: Box<Expr>, body: BlockStmt },
     Assignment { identifier: String, array_index: Option<Expr>, value: Box<Ast> },
     Decleration { identifier: String, type_: Type},
-    Input { identifier: String }, 
+    Input { identifier: Box<Expr> }, 
     Output { target: Expr },
     Block(BlockStmt),
     Procedure {
@@ -237,7 +237,7 @@ impl Stmt {
                 format!("{}DECLARE {} : {:?}", indent_str, identifier, type_)
             }
             Stmt::Input { identifier } => {
-                format!("{}INPUT {}", indent_str, identifier)
+                format!("{}INPUT {}", indent_str, identifier.to_prefix())
             }
             Stmt::Output { target } => {
                 format!("{}OUTPUT {}", indent_str, target.to_prefix())
