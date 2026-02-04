@@ -6,13 +6,29 @@ A Rust-based interpreter for Cambridge International AS & A Level Computer Scien
 
 ### Quick Install (Recommended)
 
-If you have Rust and Cargo installed:
+<!-- > **Don't have Rust?** Install it from [here](https://rust-lang.org/tools/install/). -->
 
-> **Don't have Rust?** Install it from [rustup.rs](https://rustup.rs/) - it takes less than a minute!
+### Linux/macOS
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # Install Rust
+cargo install cambridge-pseudocode-interpreter                   # Then install the CPS interpreter
+```
 
+### Windows Users
+
+#### Step 1: Install Rust (PowerShell or CMD)
+```bash
+winget install Rustlang.Rust.GNU
+```
+
+#### Step 2: Close and reopen PowerShell/Terminal
+#### (This loads Rust into PATH)
+
+#### Step 3: Now install CPS
 ```bash
 cargo install cambridge-pseudocode-interpreter
 ```
+
 
 After installation, the `cps` command will be available globally:
 
@@ -21,59 +37,12 @@ cps --version
 cps --help
 ```
 
-### Install from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/faisalfakih/cambridge-pseudocode-inter.git
-cd cambridge-pseudocode-inter
-
-# Build and install
-cargo install --path .
-```
-
-### Manual Installation
-
-#### Linux/macOS
-
-```bash
-# Clone and build
-git clone https://github.com/faisalfakih/cambridge-pseudocode-inter.git
-cd cambridge-pseudocode-inter
-cargo build --release
-
-# Copy to system path (requires sudo)
-sudo cp target/release/cps /usr/local/bin/
-
-# Or copy to user directory (no sudo needed)
-mkdir -p ~/.local/bin
-cp target/release/cps ~/.local/bin/
-# Add to PATH: export PATH="$HOME/.local/bin:$PATH"
-```
-
-#### Windows
-
-```batch
-# Clone and build
-git clone https://github.com/faisalfakih/cambridge-pseudocode-inter.git
-cd cambridge-pseudocode-inter
-cargo build --release
-
-# Copy to Windows directory
-copy target\release\cps.exe C:\Windows\System32\
-```
-
-### Prerequisites
-
-To build from source, you need:
-- Rust 1.70 or higher ([Install Rust](https://rustup.rs/))
-- Cargo (comes with Rust)
 
 ## 🚀 Quick Start
 
 ### Using the Interpreter
 
-Create a file named `hello.cps`:
+Create a file named `main.cps`:
 
 ```pseudocode
 DECLARE name : STRING
@@ -83,21 +52,28 @@ INPUT name
 OUTPUT "Hello, " & name & "!"
 ```
 
-Run it:
+#### Run it:
 
 ```bash
-cps hello.cps
+cps main.cps  # Replace main.cps with the name of the file you made
+```
+
+OR 
+
+
+```bash
+cps  # This only works if the name of the file is main.cps
 ```
 
 ### Command Line Options
 
 ```bash
 # Run a pseudocode file
-cps program.cps
+cps main.cps
 
 # Show verbose output (tokens and AST)
-cps program.cps --verbose
-cps program.cps -v
+cps main.cps --verbose
+cps main.cps -v
 
 # Show help
 cps --help
