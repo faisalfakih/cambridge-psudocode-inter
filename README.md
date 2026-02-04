@@ -22,7 +22,7 @@ winget install Rustlang.Rust.GNU
 ```
 
 #### Step 2: Close and reopen PowerShell/Terminal
-#### (This loads Rust into PATH)
+(This loads Rust into PATH)
 
 #### Step 3: Now install CPS
 ```bash
