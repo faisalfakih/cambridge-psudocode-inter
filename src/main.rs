@@ -1,15 +1,14 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+mod Inter;
 mod Lexer;
 mod Parser;
-mod Inter;
 mod errortype;
 
+use crate::Parser::parser;
+use clap::{Arg, Command};
 use std::fs;
 use std::process;
-use clap::{Arg, Command};
-use crate::Parser::parser;
-
 
 fn main() {
     let matches = Command::new("cps")
@@ -20,29 +19,30 @@ fn main() {
             Arg::new("file")
                 .value_name("FILE")
                 .help("Path to the .cps file to execute")
-                .index(1)
+                .index(1),
         )
         .arg(
             Arg::new("verbose")
                 .short('v')
                 .long("verbose")
                 .help("Enable verbose output")
-                .action(clap::ArgAction::SetTrue)
+                .action(clap::ArgAction::SetTrue),
         )
-        .arg(Arg::new("parse")
-            .short('p')
-            .long("parse")
-            .help("Only parse the file and print the AST")
-            .action(clap::ArgAction::SetTrue)
+        .arg(
+            Arg::new("parse")
+                .short('p')
+                .long("parse")
+                .help("Only parse the file and print the AST")
+                .action(clap::ArgAction::SetTrue),
         )
-        .arg(Arg::new("time")
-            .short('t')
-            .long("time")
-            .help("Print how long the program took to run")
-            .action(clap::ArgAction::SetTrue)
+        .arg(
+            Arg::new("time")
+                .short('t')
+                .long("time")
+                .help("Print how long the program took to run")
+                .action(clap::ArgAction::SetTrue),
         )
         .get_matches();
-
 
     // get the file argument
     let filename = matches
@@ -99,7 +99,7 @@ fn main() {
             eprintln!("{}", e);
             process::exit(1);
         }
-    }; 
+    };
 
     if parse_only {
         process::exit(0);

@@ -1,12 +1,10 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::rc::Rc;
-use std::cell::RefCell;
 
 use crate::errortype::{CPSError, ErrorType};
 use crate::Parser::ast::{BlockStmt, Expr, FileMode, PassingValue};
-
-
 
 #[derive(Clone, PartialEq)]
 pub enum Type {
@@ -19,7 +17,7 @@ pub enum Type {
     Array(ArrayType),
     Date,
     Named(String),
-    // Record(String), 
+    // Record(String),
     Enum(String),
 }
 
@@ -47,10 +45,14 @@ impl std::fmt::Debug for Type {
                         fmt_bound(col_upper),
                         array_type.base_type
                     ),
-                    None => write!(f, "Array[{}:{}] OF {:?}", lower, upper, array_type.base_type),
+                    None => write!(
+                        f,
+                        "Array[{}:{}] OF {:?}",
+                        lower, upper, array_type.base_type
+                    ),
                 }
             }
-            Type::Boolean => write!(f, "Boolean")
+            Type::Boolean => write!(f, "Boolean"),
         }
     }
 }
@@ -80,24 +82,31 @@ pub enum Value {
     String(String),
     Boolean(bool),
     Char(char),
-    Array { array: Vec<Value>, lower_bound: usize, bounds_2d: Option<(usize, usize)> }, 
+    Array {
+        array: Vec<Value>,
+        lower_bound: usize,
+        bounds_2d: Option<(usize, usize)>,
+    },
     Identifier(String),
     Function(Function),
     Date(Date),
     // Record(HashMap<String, Value>),
-    Enum { type_name: String, variant: Option<String> }, // may not contain a variant
-    // Null,  
+    Enum {
+        type_name: String,
+        variant: Option<String>,
+    }, // may not contain a variant
+       // Null,
 }
 
 impl Value {
     pub fn type_of(&self) -> Result<Type, CPSError> {
         Ok(match self {
-            Value::Integer(_)  => Type::Integer,
-            Value::Real(_)     => Type::Real,
-            Value::String(_)   => Type::String,
-            Value::Boolean(_)  => Type::Boolean,
-            Value::Char(_)     => Type::Char,
-            Value::Date(_)     => Type::Date,
+            Value::Integer(_) => Type::Integer,
+            Value::Real(_) => Type::Real,
+            Value::String(_) => Type::String,
+            Value::Boolean(_) => Type::Boolean,
+            Value::Char(_) => Type::Char,
+            Value::Date(_) => Type::Date,
             Value::Function(_) => Type::Function,
             Value::Enum { type_name, .. } => Type::Enum(type_name.to_owned()),
 
@@ -116,7 +125,11 @@ impl Value {
                 });
             }
 
-            Value::Array { array, lower_bound, bounds_2d } => {
+            Value::Array {
+                array,
+                lower_bound,
+                bounds_2d,
+            } => {
                 let lit = |n: usize| Box::new(Expr::Literal(Value::Integer(n as i64)));
 
                 let base_type = array
@@ -129,7 +142,9 @@ impl Value {
                              somewhere its type is needed."
                                 .to_string(),
                         ),
-                        line: 0, column: 0, source: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
                     })?
                     .type_of()?;
 
@@ -145,7 +160,9 @@ impl Value {
                                 hint: Some(
                                     "The lower bound must not exceed the upper bound.".to_string(),
                                 ),
-                                line: 0, column: 0, source: None,
+                                line: 0,
+                                column: 0,
+                                source: None,
                             });
                         }
 
@@ -164,11 +181,16 @@ impl Value {
                                     "The element count should be a multiple of the column count."
                                         .to_string(),
                                 ),
-                                line: 0, column: 0, source: None,
+                                line: 0,
+                                column: 0,
+                                source: None,
                             });
                         }
 
-                        (lower_bound + row_count - 1, Some((lit(*col_lb), lit(*col_ub))))
+                        (
+                            lower_bound + row_count - 1,
+                            Some((lit(*col_lb), lit(*col_ub))),
+                        )
                     }
                     None => {
                         // the empty case already returned above, so len() >= 1 and this subtraction cannot underflow.
@@ -186,7 +208,6 @@ impl Value {
         })
     }
 
-
     fn days_in_month(month: u16, year: u16) -> u16 {
         match month {
             1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
@@ -197,27 +218,43 @@ impl Value {
         }
     }
 
-    pub fn validate_date(day: u16, month: u16, year: u16) -> Result<(), String> { // TODO: Refactor this into impl Date?
+    pub fn validate_date(day: u16, month: u16, year: u16) -> Result<(), String> {
+        // TODO: Refactor this into impl Date?
         const MONTH_NAMES: [&str; 12] = [
-            "January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December",
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
         ];
 
         if month < 1 || month > 12 {
-            return Err(format!("{:02} is not a valid month; months are 01 to 12", month));
+            return Err(format!(
+                "{:02} is not a valid month; months are 01 to 12",
+                month
+            ));
         }
 
         let max_day = Value::days_in_month(month, year);
         if day < 1 || day > max_day {
             return Err(format!(
-                    "{:02} is not a valid day; {} {} has {} days",
-                    day, MONTH_NAMES[(month - 1) as usize], year, max_day
+                "{:02} is not a valid day; {} {} has {} days",
+                day,
+                MONTH_NAMES[(month - 1) as usize],
+                year,
+                max_day
             ));
         }
 
         Ok(())
     }
-
 }
 
 impl std::fmt::Debug for Value {
@@ -234,14 +271,20 @@ impl std::fmt::Debug for Value {
                 }
             }
             Value::Char(c) => write!(f, "CHAR('{}')", c),
-            Value::Date(date) => write!(f, "DATE({:02}/{:02}/{:04})", date.day, date.month, date.year),
-            Value::Enum { type_name, variant } => {
-                match variant {
-                    Some(v) => write!(f, "{}({})", type_name, v),
-                    None => write!(f, "{}(None)", type_name)
-                }
+            Value::Date(date) => write!(
+                f,
+                "DATE({:02}/{:02}/{:04})",
+                date.day, date.month, date.year
+            ),
+            Value::Enum { type_name, variant } => match variant {
+                Some(v) => write!(f, "{}({})", type_name, v),
+                None => write!(f, "{}(None)", type_name),
             },
-            Value::Array { array, lower_bound, bounds_2d } => {
+            Value::Array {
+                array,
+                lower_bound,
+                bounds_2d,
+            } => {
                 let base = match array.first() {
                     Some(Value::Integer(_)) => "Integer",
                     Some(Value::Real(_)) => "Real",
@@ -292,11 +335,16 @@ impl std::fmt::Debug for Value {
                         };
                         format!("{} {} : {:?}", keyword, param_name, param_type)
                     })
-                .collect();
+                    .collect();
 
                 match &function.return_type {
                     Some(return_type) => {
-                        write!(f, "FUNCTION({}) RETURNS {:?}", params.join(", "), return_type)
+                        write!(
+                            f,
+                            "FUNCTION({}) RETURNS {:?}",
+                            params.join(", "),
+                            return_type
+                        )
                     }
                     None => write!(f, "PROCEDURE({})", params.join(", ")),
                 }
@@ -304,7 +352,6 @@ impl std::fmt::Debug for Value {
         }
     }
 }
-
 
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -316,11 +363,9 @@ impl std::fmt::Display for Value {
             Value::Boolean(true) => write!(f, "TRUE"),
             Value::Boolean(false) => write!(f, "FALSE"),
             Value::Date(date) => write!(f, "{:02}/{:02}/{:04}", date.day, date.month, date.year),
-            Value::Enum { variant, .. } => {
-                    match variant {
-                        Some(v) => write!(f, "{}", v),
-                        None => write!(f, "None"),
-                    }
+            Value::Enum { variant, .. } => match variant {
+                Some(v) => write!(f, "{}", v),
+                None => write!(f, "None"),
             },
             Value::Array { .. } | Value::Function(_) | Value::Identifier(_) => {
                 write!(f, "{:?}", self)
@@ -365,7 +410,12 @@ impl Value {
 
     /// Turns a raw INPUT line into a value of the declared type.
     /// `target` names the destination for the error message, e.g. "variable 'Age'".
-    pub fn from_input(text: &str, ty: &Type, target: &str, environment: Rc<RefCell<Environment>>) -> Result<Value, CPSError> {
+    pub fn from_input(
+        text: &str,
+        ty: &Type,
+        target: &str,
+        environment: Rc<RefCell<Environment>>,
+    ) -> Result<Value, CPSError> {
         match ty {
             Type::String => Ok(Value::String(text.to_string())),
 
@@ -398,7 +448,9 @@ impl Value {
                     error_type: ErrorType::Runtime,
                     message: format!("'{}' is not a valid date for {}: {}", text, target, reason),
                     hint: Some("Dates are written as dd/mm/yyyy.".to_owned()),
-                    line: 0, column: 0, source: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
                 }),
             },
 
@@ -406,9 +458,16 @@ impl Value {
                 let is_valid_enum = environment.borrow().check_if_valid_enum_value(name, text);
 
                 if is_valid_enum {
-                    Ok(Value::Enum { type_name: name.into(), variant: Some(text.into()) })
+                    Ok(Value::Enum {
+                        type_name: name.into(),
+                        variant: Some(text.into()),
+                    })
                 } else {
-                    Err(input_error(format!("a valid variant of the enum {}", name).as_ref(), target, text))
+                    Err(input_error(
+                        format!("a valid variant of the enum {}", name).as_ref(),
+                        target,
+                        text,
+                    ))
                 }
             }
 
@@ -416,7 +475,9 @@ impl Value {
                 error_type: ErrorType::Runtime,
                 message: format!("Unsupported type for INPUT into {}: {:?}", target, ty),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             }),
         }
     }
@@ -427,10 +488,11 @@ fn input_error(expected: &str, target: &str, got: &str) -> CPSError {
         error_type: ErrorType::Runtime,
         message: format!("Expected {} for {}, got: {}", expected, target, got),
         hint: None,
-        line: 0, column: 0, source: None,
+        line: 0,
+        column: 0,
+        source: None,
     }
 }
-
 
 #[derive(Debug)]
 pub struct CloneableFile(File);
@@ -441,8 +503,6 @@ impl Clone for CloneableFile {
     }
 }
 
-
-
 #[derive(Clone, Debug)]
 pub struct OpenFile {
     pub mode: FileMode,
@@ -451,16 +511,14 @@ pub struct OpenFile {
     pub handle: Option<CloneableFile>, // file handle for write/append mode
 }
 
-
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     pub parameters: Vec<(String, Type, PassingValue)>,
     pub return_type: Option<Type>,
-    pub body: BlockStmt
+    pub body: BlockStmt,
 }
 
-#[derive(Clone, Debug, PartialEq)] 
+#[derive(Clone, Debug, PartialEq)]
 pub struct Date {
     pub day: u16,
     pub month: u16,
@@ -471,27 +529,32 @@ impl Date {
     pub fn parse(text: &str) -> Result<Date, String> {
         let parts: Vec<&str> = text.split('/').collect();
         if parts.len() != 3
-            || parts[0].len() != 2 || parts[1].len() != 2 || parts[2].len() != 4
+            || parts[0].len() != 2
+            || parts[1].len() != 2
+            || parts[2].len() != 4
             || !parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit()))
         {
             return Err("dates are written as dd/mm/yyyy".to_string());
         }
-        let (day, month, year) = (parts[0].parse().unwrap(), parts[1].parse().unwrap(), parts[2].parse().unwrap());
+        let (day, month, year) = (
+            parts[0].parse().unwrap(),
+            parts[1].parse().unwrap(),
+            parts[2].parse().unwrap(),
+        );
         Value::validate_date(day, month, year)?;
         Ok(Date { day, month, year })
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Environment {
     pub bindings: HashMap<String, usize>,
     parent: Option<Rc<RefCell<Environment>>>,
     pub open_files: HashMap<String, OpenFile>, // track open files by variable name
-    constants: HashSet<String>, // track constant variable names
-    pub heap: Rc<RefCell<HashMap<usize, Value>>>, // for use in pointers and reference types in the future 
+    constants: HashSet<String>,                // track constant variable names
+    pub heap: Rc<RefCell<HashMap<usize, Value>>>, // for use in pointers and reference types in the future
     next_address: Rc<RefCell<usize>>, // simple counter to assign unique addresses for reference types
-    types: HashMap<String, Type>, // defined custom types within the environment
+    types: HashMap<String, Type>,     // defined custom types within the environment
     enum_variants: HashMap<String, Vec<String>>, // the values of each enumerated type, in the order they were declared
 }
 
@@ -507,9 +570,8 @@ impl Environment {
             types: HashMap::new(),
             enum_variants: HashMap::new(),
         }));
-        
-        // declare builtin functions here
 
+        // declare builtin functions here
 
         global
     }
@@ -550,9 +612,7 @@ impl Environment {
 
         match &self.parent {
             Some(parent_rc) => parent_rc.borrow().get(name),
-            None => {
-                None
-            },
+            None => None,
         }
     }
 
@@ -562,7 +622,9 @@ impl Environment {
                 error_type: ErrorType::Runtime,
                 message: format!("Cannot modify constant '{}'", name),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             });
         }
 
@@ -580,27 +642,42 @@ impl Environment {
                 error_type: ErrorType::Runtime,
                 message: format!("Undefined variable '{}'", name),
                 hint: Some("Check if the variable is declared before use.".to_string()),
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             }),
         }
     }
 
-
-
-    pub fn set_array_element(&mut self, name: &str, index: usize, col: Option<usize>, value: Value) -> Result<(), CPSError> {
+    pub fn set_array_element(
+        &mut self,
+        name: &str,
+        index: usize,
+        col: Option<usize>,
+        value: Value,
+    ) -> Result<(), CPSError> {
         if let Some(address) = self.bindings.get(name) {
             if let Some(current_value) = self.heap.borrow_mut().get_mut(address) {
                 match current_value {
-                    Value::Array { array, lower_bound, bounds_2d } => {
+                    Value::Array {
+                        array,
+                        lower_bound,
+                        bounds_2d,
+                    } => {
                         let lower_bound = *lower_bound;
                         let bounds_2d = *bounds_2d;
 
                         if index < lower_bound {
                             return Err(CPSError {
                                 error_type: crate::errortype::ErrorType::Runtime,
-                                message: format!("Array index {} is below lower bound {} for '{}'", index, lower_bound, name),
+                                message: format!(
+                                    "Array index {} is below lower bound {} for '{}'",
+                                    index, lower_bound, name
+                                ),
                                 hint: Some(format!("Valid indices start from {}", lower_bound)),
-                                line: 0, column: 0, source: None,
+                                line: 0,
+                                column: 0,
+                                source: None,
                             });
                         }
 
@@ -608,25 +685,46 @@ impl Environment {
                             let col_idx = col.ok_or_else(|| CPSError {
                                 error_type: crate::errortype::ErrorType::Runtime,
                                 message: format!("Missing column index for 2D array '{}'", name),
-                                hint: Some("2D arrays require both row and column indices".to_string()),
-                                line: 0, column: 0, source: None,
+                                hint: Some(
+                                    "2D arrays require both row and column indices".to_string(),
+                                ),
+                                line: 0,
+                                column: 0,
+                                source: None,
                             })?;
 
                             let col_count = col_ub - col_lb + 1;
                             let row_offset = index - lower_bound;
-                            let col_offset = col_idx.checked_sub(col_lb).ok_or_else(|| CPSError {
-                                error_type: crate::errortype::ErrorType::Runtime,
-                                message: format!("Column index {} is below lower bound {} for '{}'", col_idx, col_lb, name),
-                                hint: Some(format!("Valid column indices start from {}", col_lb)),
-                                line: 0, column: 0, source: None,
-                            })?;
+                            let col_offset =
+                                col_idx.checked_sub(col_lb).ok_or_else(|| CPSError {
+                                    error_type: crate::errortype::ErrorType::Runtime,
+                                    message: format!(
+                                        "Column index {} is below lower bound {} for '{}'",
+                                        col_idx, col_lb, name
+                                    ),
+                                    hint: Some(format!(
+                                        "Valid column indices start from {}",
+                                        col_lb
+                                    )),
+                                    line: 0,
+                                    column: 0,
+                                    source: None,
+                                })?;
 
                             if col_offset >= col_count {
                                 return Err(CPSError {
                                     error_type: crate::errortype::ErrorType::Runtime,
-                                    message: format!("Column index {} is out of bounds for '{}'", col_idx, name),
-                                    hint: Some(format!("Valid column indices range from {} to {}", col_lb, col_ub)),
-                                    line: 0, column: 0, source: None,
+                                    message: format!(
+                                        "Column index {} is out of bounds for '{}'",
+                                        col_idx, name
+                                    ),
+                                    hint: Some(format!(
+                                        "Valid column indices range from {} to {}",
+                                        col_lb, col_ub
+                                    )),
+                                    line: 0,
+                                    column: 0,
+                                    source: None,
                                 });
                             }
 
@@ -640,7 +738,9 @@ impl Environment {
                                 error_type: crate::errortype::ErrorType::Runtime,
                                 message: format!("Array index out of bounds for '{}'", name),
                                 hint: None,
-                                line: 0, column: 0, source: None,
+                                line: 0,
+                                column: 0,
+                                source: None,
                             });
                         }
 
@@ -648,43 +748,69 @@ impl Environment {
 
                         return Ok(());
                     }
-                    _ => return Err(CPSError {
-                        error_type: crate::errortype::ErrorType::Runtime,
-                        message: format!("Variable '{}' is not an array", name),
-                        hint: None,
-                        line: 0, column: 0, source: None,
-                    }),
+                    _ => {
+                        return Err(CPSError {
+                            error_type: crate::errortype::ErrorType::Runtime,
+                            message: format!("Variable '{}' is not an array", name),
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        })
+                    }
                 }
             }
         }
 
         match &self.parent {
-            Some(parent_rc) => parent_rc.borrow_mut().set_array_element(name, index, col, value),
+            Some(parent_rc) => parent_rc
+                .borrow_mut()
+                .set_array_element(name, index, col, value),
             None => Err(CPSError {
                 error_type: crate::errortype::ErrorType::Runtime,
                 message: format!("Variable '{}' not found", name),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             }),
         }
     }
 
-    pub fn get_array_element(&self, name: &str, index: usize, col: Option<usize>) -> Result<Value, CPSError> {
+    pub fn get_array_element(
+        &self,
+        name: &str,
+        index: usize,
+        col: Option<usize>,
+    ) -> Result<Value, CPSError> {
         if let Some(address) = self.bindings.get(name) {
-            let current_value = self.get_variable_at_address(*address).ok_or_else(|| CPSError {
-                error_type: crate::errortype::ErrorType::Runtime,
-                message: format!("Variable '{}' not found in memory", name),
-                hint: None,
-                line: 0, column: 0, source: None,
-            })?;
+            let current_value = self
+                .get_variable_at_address(*address)
+                .ok_or_else(|| CPSError {
+                    error_type: crate::errortype::ErrorType::Runtime,
+                    message: format!("Variable '{}' not found in memory", name),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                })?;
             match current_value {
-                Value::Array { array, lower_bound, bounds_2d } => {
+                Value::Array {
+                    array,
+                    lower_bound,
+                    bounds_2d,
+                } => {
                     if index < lower_bound {
                         return Err(CPSError {
                             error_type: crate::errortype::ErrorType::Runtime,
-                            message: format!("Array index {} is below lower bound {} for '{}'", index, lower_bound, name),
+                            message: format!(
+                                "Array index {} is below lower bound {} for '{}'",
+                                index, lower_bound, name
+                            ),
                             hint: Some(format!("Valid indices start from {}", lower_bound)),
-                            line: 0, column: 0, source: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
                         });
                     }
 
@@ -693,24 +819,39 @@ impl Environment {
                             error_type: crate::errortype::ErrorType::Runtime,
                             message: format!("Missing column index for 2D array '{}'", name),
                             hint: Some("2D arrays require both row and column indices".to_string()),
-                            line: 0, column: 0, source: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
                         })?;
 
                         let col_count = col_ub - col_lb + 1;
                         let row_offset = index - lower_bound;
                         let col_offset = col_idx.checked_sub(col_lb).ok_or_else(|| CPSError {
                             error_type: crate::errortype::ErrorType::Runtime,
-                            message: format!("Column index {} is below lower bound {} for '{}'", col_idx, col_lb, name),
+                            message: format!(
+                                "Column index {} is below lower bound {} for '{}'",
+                                col_idx, col_lb, name
+                            ),
                             hint: Some(format!("Valid column indices start from {}", col_lb)),
-                            line: 0, column: 0, source: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
                         })?;
 
                         if col_offset >= col_count {
                             return Err(CPSError {
                                 error_type: crate::errortype::ErrorType::Runtime,
-                                message: format!("Column index {} is out of bounds for '{}'", col_idx, name),
-                                hint: Some(format!("Valid column indices range from {} to {}", col_lb, col_ub)),
-                                line: 0, column: 0, source: None,
+                                message: format!(
+                                    "Column index {} is out of bounds for '{}'",
+                                    col_idx, name
+                                ),
+                                hint: Some(format!(
+                                    "Valid column indices range from {} to {}",
+                                    col_lb, col_ub
+                                )),
+                                line: 0,
+                                column: 0,
+                                source: None,
                             });
                         }
 
@@ -724,7 +865,9 @@ impl Environment {
                             error_type: crate::errortype::ErrorType::Runtime,
                             message: format!("Array index out of bounds for '{}'", name),
                             hint: None,
-                            line: 0, column: 0, source: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
                         });
                     }
 
@@ -734,7 +877,9 @@ impl Environment {
                     error_type: crate::errortype::ErrorType::Runtime,
                     message: format!("Variable '{}' is not an array", name),
                     hint: None,
-                    line: 0, column: 0, source: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
                 }),
             }
         } else {
@@ -744,12 +889,13 @@ impl Environment {
                     error_type: crate::errortype::ErrorType::Runtime,
                     message: format!("Variable '{}' not found", name),
                     hint: None,
-                    line: 0, column: 0, source: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
                 }),
             }
         }
     }
-
 
     pub fn closefile(&mut self, name: &str) -> Result<(), CPSError> {
         if let Some(open_file) = self.open_files.get_mut(name) {
@@ -768,7 +914,9 @@ impl Environment {
                     error_type: ErrorType::Runtime,
                     message: format!("Failed to flush file '{}' before closing: {}", name, e),
                     hint: None,
-                    line: 0, column: 0, source: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
                 })?;
             }
             self.open_files.remove(name);
@@ -780,17 +928,22 @@ impl Environment {
                 error_type: ErrorType::Runtime,
                 message: format!("Cannot close file '{}': file is not open", name),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             }),
         }
     }
 
     pub fn is_file_open_conflicting(&self, name: &str, requested_mode: &FileMode) -> bool {
-        if let Some(_) = self.open_files.get(name) { // can't open the same file twice
+        if let Some(_) = self.open_files.get(name) {
+            // can't open the same file twice
             return true;
         }
         match &self.parent {
-            Some(parent_rc) => parent_rc.borrow().is_file_open_conflicting(name, requested_mode),
+            Some(parent_rc) => parent_rc
+                .borrow()
+                .is_file_open_conflicting(name, requested_mode),
             None => false,
         }
     }
@@ -849,7 +1002,9 @@ impl Environment {
                         error_type: ErrorType::Runtime,
                         message: format!("Failed to open file '{}': {}", name, e),
                         hint: None,
-                        line: 0, column: 0, source: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
                     })?;
 
                 let mut contents = String::new();
@@ -857,21 +1012,34 @@ impl Environment {
                     error_type: ErrorType::Runtime,
                     message: format!("Failed to read file '{}': {}", name, e),
                     hint: None,
-                    line: 0, column: 0, source: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
                 })?;
                 let lines: Vec<String> = contents.lines().map(|l| l.to_string()).collect();
 
-                self.open_files.insert(name.to_string(), OpenFile {
-                    mode: mode.clone(),
-                    handle: None, 
-                    line_idx: 0,
-                    lines: Some(lines),
-                });
+                self.open_files.insert(
+                    name.to_string(),
+                    OpenFile {
+                        mode: mode.clone(),
+                        handle: None,
+                        line_idx: 0,
+                        lines: Some(lines),
+                    },
+                );
                 return Ok(());
             }
         };
 
-        self.open_files.insert(name.to_string(), OpenFile { mode: mode.clone(), handle: Some(file), line_idx: 0, lines: None, });
+        self.open_files.insert(
+            name.to_string(),
+            OpenFile {
+                mode: mode.clone(),
+                handle: Some(file),
+                line_idx: 0,
+                lines: None,
+            },
+        );
         Ok(())
     }
 
@@ -880,7 +1048,10 @@ impl Environment {
             if open_file.mode == FileMode::Read {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("Cannot write to file '{}': file is opened in read mode", filename),
+                    message: format!(
+                        "Cannot write to file '{}': file is opened in read mode",
+                        filename
+                    ),
                     hint: None,
                     line: 0,
                     column: 0,
@@ -891,14 +1062,17 @@ impl Environment {
             if let Some(handle) = &mut open_file.handle {
                 use std::io::Write;
                 let output = value.to_output_string("write")?;
-                handle.0.write_all(format!("{}\n", output).as_bytes()).map_err(|e| CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("Failed to write to file '{}': {}", filename, e),
-                    hint: None,
-                    line: 0,
-                    column: 0,
-                    source: None,
-                })?;
+                handle
+                    .0
+                    .write_all(format!("{}\n", output).as_bytes())
+                    .map_err(|e| CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Failed to write to file '{}': {}", filename, e),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    })?;
                 Ok(())
             } else {
                 Err(CPSError {
@@ -930,27 +1104,38 @@ impl Environment {
             if open_file.mode != FileMode::Read {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("Cannot read from file '{}': file is not opened in read mode", filename),
+                    message: format!(
+                        "Cannot read from file '{}': file is not opened in read mode",
+                        filename
+                    ),
                     hint: None,
-                    line: 0, column: 0, source: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
                 });
             }
 
             let lines = match open_file.lines.as_ref() {
                 Some(l) => l,
-                None => return Err(CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("File '{}' has not been buffered for reading", filename),
-                    hint: Some("File content should have been loaded on open".to_string()),
-                    line: 0, column: 0, source: None,
-                }),
+                None => {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("File '{}' has not been buffered for reading", filename),
+                        hint: Some("File content should have been loaded on open".to_string()),
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    })
+                }
             };
             if open_file.line_idx >= lines.len() {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
                     message: format!("Cannot read past end of file '{}'", filename),
                     hint: Some("Check EOF before reading".to_string()),
-                    line: 0, column: 0, source: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
                 });
             }
 
@@ -964,7 +1149,9 @@ impl Environment {
                     error_type: ErrorType::Runtime,
                     message: format!("File '{}' is not open", filename),
                     hint: None,
-                    line: 0, column: 0, source: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
                 }),
             }
         }
@@ -975,19 +1162,28 @@ impl Environment {
             if open_file.mode != FileMode::Read {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("EOF can only be used on files opened in READ mode, '{}' is in {:?} mode", filename, open_file.mode),
+                    message: format!(
+                        "EOF can only be used on files opened in READ mode, '{}' is in {:?} mode",
+                        filename, open_file.mode
+                    ),
                     hint: None,
-                    line: 0, column: 0, source: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
                 });
             }
             let is_eof = match &open_file.lines {
                 Some(lines) => open_file.line_idx >= lines.len(),
-                None => return Err(CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("File '{}' has not been buffered", filename),
-                    hint: Some("File content was not loaded on open".to_string()),
-                    line: 0, column: 0, source: None,
-                }),
+                None => {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("File '{}' has not been buffered", filename),
+                        hint: Some("File content was not loaded on open".to_string()),
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    })
+                }
             };
             return Ok(is_eof);
         }
@@ -997,22 +1193,25 @@ impl Environment {
                 error_type: ErrorType::Runtime,
                 message: format!("File '{}' is not open", filename),
                 hint: Some("Make sure to open the file before checking EOF".to_string()),
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             }),
         }
     }
 
-    
-
-
     pub fn get_type(&mut self, name: &str) -> Result<Type, CPSError> {
         if let Some(address) = self.bindings.get(name) {
-            let value = self.get_variable_at_address(*address).ok_or_else(|| CPSError {
-                error_type: crate::errortype::ErrorType::Runtime,
-                message: format!("Variable '{}' not found in memory", name),
-                hint: None,
-                line: 0, column: 0, source: None,
-            })?;
+            let value = self
+                .get_variable_at_address(*address)
+                .ok_or_else(|| CPSError {
+                    error_type: crate::errortype::ErrorType::Runtime,
+                    message: format!("Variable '{}' not found in memory", name),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                })?;
             return value.type_of().map_err(|mut e| {
                 e.message = format!("{} (variable '{}')", e.message, name);
                 e
@@ -1025,7 +1224,9 @@ impl Environment {
                 error_type: crate::errortype::ErrorType::Runtime,
                 message: format!("Undefined variable '{}'", name),
                 hint: Some("Check if the variable is declared before use.".to_string()),
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             }),
         }
     }
@@ -1036,7 +1237,9 @@ impl Environment {
                 error_type: ErrorType::Runtime,
                 message: format!("Constant '{}' is already declared", name),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             });
         }
         self.define(name.to_string(), value.clone())?;
@@ -1060,8 +1263,10 @@ impl Environment {
                 error_type: ErrorType::Runtime,
                 message: format!("The type '{}' is already defined", name),
                 hint: None,
-                line: 0, column: 0, source: None,
-            })
+                line: 0,
+                column: 0,
+                source: None,
+            });
         }
 
         // checked up front so a rejected declaration leaves nothing behind
@@ -1070,22 +1275,33 @@ impl Environment {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
                     message: format!("'{}' is listed twice in the type '{}'", variant, name),
-                    hint: Some("Every value of an enumerated type needs a name of its own.".to_owned()),
-                    line: 0, column: 0, source: None,
-                })
+                    hint: Some(
+                        "Every value of an enumerated type needs a name of its own.".to_owned(),
+                    ),
+                    line: 0,
+                    column: 0,
+                    source: None,
+                });
             }
         }
 
         for variant in variants.iter() {
-            self.declare_constant(variant, &Value::Enum { type_name: name.to_owned(), variant: Some(variant.to_owned()) })?;
+            self.declare_constant(
+                variant,
+                &Value::Enum {
+                    type_name: name.to_owned(),
+                    variant: Some(variant.to_owned()),
+                },
+            )?;
         }
 
-        self.types.insert(name.to_owned(), Type::Enum(name.to_owned()));
-        self.enum_variants.insert(name.to_owned(), variants.to_vec());
+        self.types
+            .insert(name.to_owned(), Type::Enum(name.to_owned()));
+        self.enum_variants
+            .insert(name.to_owned(), variants.to_vec());
 
         Ok(())
     }
-
 
     pub fn check_if_valid_enum_value(&self, name: &str, variant: &str) -> bool {
         if let Some(variants) = self.enum_variants.get(name) {
@@ -1109,12 +1325,12 @@ impl Environment {
                 error_type: ErrorType::Runtime,
                 message: format!("The type '{}' has not been defined", name),
                 hint: Some("Make sure you define types before you use them".to_owned()),
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             }),
         }
     }
-
-
 
     pub fn define(&mut self, name: String, value: Value) -> Result<(), CPSError> {
         if self.constants.contains(&name) {
@@ -1122,7 +1338,9 @@ impl Environment {
                 error_type: ErrorType::Runtime,
                 message: format!("Cannot redefine constant '{}'", name),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             });
         }
 
@@ -1131,7 +1349,7 @@ impl Environment {
         self.bindings.insert(name, current_addr);
 
         // ignore this, pointer arithmatic in the pseudocode works differently (+1 to a mem address will bring u to the next value past the array)
-        // match &value { 
+        // match &value {
         //     Value::Array { array, lower_bound: _, bounds_2d: _ } => {
         //         let arr_size = array.len();
         //         self.next_address += arr_size; // reserve contiguous addresses for the array
@@ -1141,19 +1359,22 @@ impl Environment {
 
         *self.next_address.borrow_mut() += 1;
 
-
-
-
         Ok(())
     }
 
-    pub fn set_variable_at_address(&mut self, name: String, address: usize) -> Result<(), CPSError> {
+    pub fn set_variable_at_address(
+        &mut self,
+        name: String,
+        address: usize,
+    ) -> Result<(), CPSError> {
         if self.constants.contains(&name) {
             return Err(CPSError {
                 error_type: ErrorType::Runtime,
                 message: format!("Cannot redefine constant '{}'", name),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             });
         }
 
@@ -1169,15 +1390,10 @@ impl Environment {
             Some(addr) => {
                 return Some(*addr);
             }
-            None => {
-                match &self.parent {
-                    Some(parent_rc) => parent_rc.borrow_mut().find_address_of_variable(name),
-                    None => {
-                        None
-                    },
-                }
-            }
+            None => match &self.parent {
+                Some(parent_rc) => parent_rc.borrow_mut().find_address_of_variable(name),
+                None => None,
+            },
         }
     }
-
 }

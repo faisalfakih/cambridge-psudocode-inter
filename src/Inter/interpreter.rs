@@ -10,7 +10,9 @@ use crate::Inter::web::{WebContext, WebEvent};
 use crate::errortype::{CPSError, ErrorType};
 use crate::Inter::cps::{ArrayType, Date, Environment, Function, Type, Value};
 use crate::Lexer::lexer::TokenType;
-use crate::Parser::ast::{Ast, BinaryExpr, BlockStmt, CaseCondition, Expr, FileMode, Stmt, PassingValue};
+use crate::Parser::ast::{
+    Ast, BinaryExpr, BlockStmt, CaseCondition, Expr, FileMode, PassingValue, Stmt,
+};
 use crate::Parser::parser::ast_to_expr;
 
 const BUILTIN_FUNCTIONS: &[&str] = &[
@@ -129,14 +131,16 @@ impl Interpreter {
         }
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(ref ctx) = self.web_ctx {
-            ctx.event_tx.send(WebEvent::Output(output)).map_err(|_| CPSError {
-                error_type: ErrorType::Runtime,
-                message: "Web client disconnected".to_string(),
-                hint: None,
-                line: 0,
-                column: 0,
-                source: None,
-            })?;
+            ctx.event_tx
+                .send(WebEvent::Output(output))
+                .map_err(|_| CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: "Web client disconnected".to_string(),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                })?;
             return Ok(());
         }
         println!("{}", output);
@@ -163,16 +167,18 @@ impl Interpreter {
         }
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(ref ctx) = self.web_ctx {
-            ctx.event_tx.send(WebEvent::NeedsInput {
-                variable: variable_name.to_string(),
-            }).map_err(|_| CPSError {
-                error_type: ErrorType::Runtime,
-                message: "Web client disconnected".to_string(),
-                hint: None,
-                line: 0,
-                column: 0,
-                source: None,
-            })?;
+            ctx.event_tx
+                .send(WebEvent::NeedsInput {
+                    variable: variable_name.to_string(),
+                })
+                .map_err(|_| CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: "Web client disconnected".to_string(),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                })?;
             return ctx.input_rx.recv().map_err(|_| CPSError {
                 error_type: ErrorType::Runtime,
                 message: "Web client disconnected while waiting for input".to_string(),
@@ -206,53 +212,41 @@ impl Interpreter {
     fn evaluate_ast_ref(&mut self, node: &Ast) -> Result<Value, CPSError> {
         match node {
             Ast::Expression(expr) => self.evaluate_expr(expr),
-            Ast::Identifier(name) => {
-                match self.current_env.borrow().get(name) {
-                    Some(value) => Ok(value),
-                    None => Err(CPSError {
-                        error_type: ErrorType::Runtime,
-                        message: format!("Undefined identifier: {}", name),
-                        hint: None,
-                        line: 0,
-                        column: 0,
-                        source: None,
-                    }),
-                }
+            Ast::Identifier(name) => match self.current_env.borrow().get(name) {
+                Some(value) => Ok(value),
+                None => Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Undefined identifier: {}", name),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                }),
             },
-            Ast::Stmt(stmt) => {
-                match self.evaluate_stmt(stmt) {
-                    Ok(_) => Ok(Value::Boolean(true)),
-                    Err(e) => Err(e),
-                }
+            Ast::Stmt(stmt) => match self.evaluate_stmt(stmt) {
+                Ok(_) => Ok(Value::Boolean(true)),
+                Err(e) => Err(e),
             },
         }
     }
 
     fn evaluate_ast(&mut self, node: Ast) -> Result<Value, CPSError> {
         match node {
-            Ast::Expression(expr) => {
-                self.evaluate_expr(&expr)
+            Ast::Expression(expr) => self.evaluate_expr(&expr),
+            Ast::Identifier(name) => match self.current_env.borrow().get(&name) {
+                Some(value) => Ok(value),
+                None => Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!("Undefined identifier: {}", name),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                }),
             },
-            Ast::Identifier(name) => {
-                match self.current_env
-                    .borrow()
-                    .get(&name) {
-                        Some(value) => Ok(value),
-                        None => Err(CPSError {
-                            error_type: ErrorType::Runtime,
-                            message: format!("Undefined identifier: {}", name),
-                            hint: None,
-                            line: 0,
-                            column: 0,
-                            source: None,
-                        }),
-                    }
-            },
-            Ast::Stmt(stmt) => {
-                match self.evaluate_stmt(&stmt) {
-                    Ok(_) => Ok(Value::Boolean(true)),
-                    Err(e) => Err(e),
-                }
+            Ast::Stmt(stmt) => match self.evaluate_stmt(&stmt) {
+                Ok(_) => Ok(Value::Boolean(true)),
+                Err(e) => Err(e),
             },
         }
         // Ok(Value::Boolean(true)) // Placeholder return value
@@ -263,26 +257,63 @@ impl Interpreter {
         // Unwrapped in a loop rather than in its own arm so a statement costs no extra stack frame.
         let mut statement = statement;
         let mut position = None;
-        while let Stmt::At { line, column, inner } = statement {
+        while let Stmt::At {
+            line,
+            column,
+            inner,
+        } = statement
+        {
             position = Some((*line, *column));
             statement = inner;
         }
 
         let result = match statement {
             Stmt::Output { target } => self.evaluate_output_stmt(target),
-            Stmt::Decleration { identifier, type_ } => self.evaluate_declaration_stmt(identifier, type_),
-            Stmt::Assignment { identifier, array_index, value } => self.evaluate_assignment_stmt(identifier, value, array_index),
+            Stmt::Decleration { identifier, type_ } => {
+                self.evaluate_declaration_stmt(identifier, type_)
+            }
+            Stmt::Assignment {
+                identifier,
+                array_index,
+                value,
+            } => self.evaluate_assignment_stmt(identifier, value, array_index),
             Stmt::Input { identifier } => self.evaluate_input_stmt(identifier),
-            Stmt::If { condition, then_branch, else_branch } => self.evaluate_if_stmt(condition, then_branch, else_branch),
-            Stmt::Case { identifier, cases, otherwise } => self.evaluate_case_stmt(identifier, cases, otherwise),
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self.evaluate_if_stmt(condition, then_branch, else_branch),
+            Stmt::Case {
+                identifier,
+                cases,
+                otherwise,
+            } => self.evaluate_case_stmt(identifier, cases, otherwise),
             Stmt::While { condition, body } => self.evaluate_while_stmt(condition, body),
             Stmt::Repeat { body, until } => self.evaluate_repeat_stmt(until, body),
-            Stmt::Procedure { name, parameters, body } => self.evaluate_procedure(name, parameters, body),
-            Stmt::Function { name, parameters, return_type, body } => self.evaluate_function(name, parameters, return_type.to_owned(), body),
+            Stmt::Procedure {
+                name,
+                parameters,
+                body,
+            } => self.evaluate_procedure(name, parameters, body),
+            Stmt::Function {
+                name,
+                parameters,
+                return_type,
+                body,
+            } => self.evaluate_function(name, parameters, return_type.to_owned(), body),
             Stmt::Call { name, arguments } => self.evaluate_call(name, arguments).map(|_| ()),
-            Stmt::Block(block) => block.statements.iter().try_for_each(|stmt| self.evaluate_stmt(stmt)),
-            Stmt::For { identifier, start, end, body, step } => self.evaluate_for(identifier, start, end, body, step),
-            Stmt::OpenFile { filename, mode  } => self.evaluate_open_file(filename, mode),
+            Stmt::Block(block) => block
+                .statements
+                .iter()
+                .try_for_each(|stmt| self.evaluate_stmt(stmt)),
+            Stmt::For {
+                identifier,
+                start,
+                end,
+                body,
+                step,
+            } => self.evaluate_for(identifier, start, end, body, step),
+            Stmt::OpenFile { filename, mode } => self.evaluate_open_file(filename, mode),
             Stmt::CloseFile { filename } => self.evaluate_close_file(filename),
             Stmt::WriteFile { filename, value } => self.evaluate_write_file(filename, value),
             Stmt::ReadFile { filename, target } => self.evaluate_read_file(filename, target),
@@ -291,12 +322,17 @@ impl Interpreter {
                     error_type: ErrorType::Return(val),
                     message: String::new(),
                     hint: None,
-                    line: 0, column: 0, source: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
                 }),
                 Err(e) => Err(e),
             },
             Stmt::Constant { identifier, value } => self.evaluate_constant(identifier, value),
-            Stmt::EnumDeclaration { identifier, variants } => self.evaluate_enum_declaration(identifier, variants),
+            Stmt::EnumDeclaration {
+                identifier,
+                variants,
+            } => self.evaluate_enum_declaration(identifier, variants),
             Stmt::At { .. } => unreachable!(),
         };
 
@@ -306,11 +342,17 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_assignment_stmt(&mut self, identifier: &String, value: &Ast, array_index: &Option<(Box<Expr>, Option<Box<Expr>>)>) -> Result<(), CPSError> {
+    fn evaluate_assignment_stmt(
+        &mut self,
+        identifier: &String,
+        value: &Ast,
+        array_index: &Option<(Box<Expr>, Option<Box<Expr>>)>,
+    ) -> Result<(), CPSError> {
         let value_expression = match value {
             Ast::Expression(expr) => expr,
             Ast::Identifier(name) => {
-                let v = self.current_env
+                let v = self
+                    .current_env
                     .borrow()
                     .get(name)
                     .ok_or_else(|| CPSError {
@@ -323,7 +365,6 @@ impl Interpreter {
                     })?;
                 let expr = ast_to_expr(Ast::Expression(Expr::Literal(v)))?;
                 &expr.clone()
-
             }
             _ => {
                 return Err(CPSError {
@@ -337,18 +378,16 @@ impl Interpreter {
             }
         };
 
-
         let mut val = self.evaluate_expr(value_expression)?;
 
         let expected_type = self.current_env.borrow_mut().get_type(identifier)?;
 
         let actual_type = self.find_actual_type(&val, identifier)?;
 
-
         let converted_val = match (&val, &expected_type, &actual_type) {
-            (Value::Real(r), Type::Integer, Type::Real) =>  {
+            (Value::Real(r), Type::Integer, Type::Real) => {
                 if (*r).fract() == 0.0 {
-                    Value::Integer(*r as i64) 
+                    Value::Integer(*r as i64)
                 } else {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
@@ -365,12 +404,11 @@ impl Interpreter {
                         source: None,
                     });
                 }
-            },
+            }
 
             (Value::Integer(i), Type::Real, Type::Integer) => Value::Real(*i as f64),
 
             _ if actual_type == expected_type => val.clone(),
-
 
             (_, Type::Array(arr_type), _) if array_index.is_some() => {
                 let can_be_converted = check_if_type_can_be_converted(&val, &*arr_type.base_type);
@@ -386,14 +424,15 @@ impl Interpreter {
                             "Type mismatch: cannot assign {:?} to array element of type {:?}",
                             actual_type, arr_type.base_type
                         ),
-                        hint: Some("Array element type must match the array's base type".to_string()),
+                        hint: Some(
+                            "Array element type must match the array's base type".to_string(),
+                        ),
                         line: 0,
                         column: 0,
                         source: None,
                     });
                 }
             }
-
 
             _ => {
                 return Err(CPSError {
@@ -426,7 +465,10 @@ impl Interpreter {
                         if r.fract() != 0.0 {
                             return Err(CPSError {
                                 error_type: ErrorType::Runtime,
-                                message: format!("Array index must be an integer, got real number: {}", r),
+                                message: format!(
+                                    "Array index must be an integer, got real number: {}",
+                                    r
+                                ),
                                 hint: None,
                                 line: 0,
                                 column: 0,
@@ -438,7 +480,10 @@ impl Interpreter {
                     _ => {
                         return Err(CPSError {
                             error_type: ErrorType::Runtime,
-                            message: format!("Array index must be an integer, got: {:?}", index_value),
+                            message: format!(
+                                "Array index must be an integer, got: {:?}",
+                                index_value
+                            ),
                             hint: None,
                             line: 0,
                             column: 0,
@@ -453,7 +498,10 @@ impl Interpreter {
                         if r.fract() != 0.0 {
                             return Err(CPSError {
                                 error_type: ErrorType::Runtime,
-                                message: format!("Array column index must be an integer, got real number: {}", r),
+                                message: format!(
+                                    "Array column index must be an integer, got real number: {}",
+                                    r
+                                ),
                                 hint: None,
                                 line: 0,
                                 column: 0,
@@ -465,7 +513,10 @@ impl Interpreter {
                     Some(_) => {
                         return Err(CPSError {
                             error_type: ErrorType::Runtime,
-                            message: format!("Array column index must be an integer, got: {:?}", column_value),
+                            message: format!(
+                                "Array column index must be an integer, got: {:?}",
+                                column_value
+                            ),
                             hint: None,
                             line: 0,
                             column: 0,
@@ -480,7 +531,10 @@ impl Interpreter {
                     Some(_) => {
                         return Err(CPSError {
                             error_type: ErrorType::Runtime,
-                            message: format!("Array column index cannot be negative, got: {}", column_int.unwrap()),
+                            message: format!(
+                                "Array column index cannot be negative, got: {}",
+                                column_int.unwrap()
+                            ),
                             hint: None,
                             line: 0,
                             column: 0,
@@ -496,15 +550,18 @@ impl Interpreter {
                     .set_array_element(identifier, index_int as usize, column_usize, converted_val)
                     .map_err(|e| CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("Failed to assign value to array element '{}[{}]': {}", identifier, index_int, e.message),
+                        message: format!(
+                            "Failed to assign value to array element '{}[{}]': {}",
+                            identifier, index_int, e.message
+                        ),
                         hint: None,
                         line: 0,
                         column: 0,
                         source: None,
                     })
             }
-            None => {
-            self.current_env
+            None => self
+                .current_env
                 .borrow_mut()
                 .set(identifier, converted_val)
                 .map_err(|e| CPSError {
@@ -514,11 +571,8 @@ impl Interpreter {
                     line: 0,
                     column: 0,
                     source: None,
-                })
-            }
+                }),
         }
-
-        
     }
 
     fn find_actual_type(&self, val: &Value, identifier: &String) -> Result<Type, CPSError> {
@@ -547,7 +601,14 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_for(&mut self, identifier: &String, start: &Expr, end: &Expr, body: &BlockStmt, step: &Expr) -> Result<(), CPSError> {
+    fn evaluate_for(
+        &mut self,
+        identifier: &String,
+        start: &Expr,
+        end: &Expr,
+        body: &BlockStmt,
+        step: &Expr,
+    ) -> Result<(), CPSError> {
         let start_value = self.evaluate_expr(start)?;
         let end_value = self.evaluate_expr(end)?;
         let step_value = self.evaluate_expr(step)?;
@@ -562,7 +623,10 @@ impl Interpreter {
                 if n.fract() != 0.0 {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("FOR loop start value must be an integer, got real number: {}", n),
+                        message: format!(
+                            "FOR loop start value must be an integer, got real number: {}",
+                            n
+                        ),
                         hint: None,
                         line: 0,
                         column: 0,
@@ -574,7 +638,10 @@ impl Interpreter {
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("FOR loop start value must be an integer, got: {:?}", start_value),
+                    message: format!(
+                        "FOR loop start value must be an integer, got: {:?}",
+                        start_value
+                    ),
                     hint: None,
                     line: 0,
                     column: 0,
@@ -588,7 +655,10 @@ impl Interpreter {
                 if n.fract() != 0.0 {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("FOR loop end value must be an integer, got real number: {}", n),
+                        message: format!(
+                            "FOR loop end value must be an integer, got real number: {}",
+                            n
+                        ),
                         hint: None,
                         line: 0,
                         column: 0,
@@ -600,7 +670,10 @@ impl Interpreter {
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("FOR loop end value must be an integer, got: {:?}", end_value),
+                    message: format!(
+                        "FOR loop end value must be an integer, got: {:?}",
+                        end_value
+                    ),
                     hint: None,
                     line: 0,
                     column: 0,
@@ -614,7 +687,10 @@ impl Interpreter {
                 if n.fract() != 0.0 {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("FOR loop step value must evaluate to an integer number, got: {:?}", step_value),
+                        message: format!(
+                            "FOR loop step value must evaluate to an integer number, got: {:?}",
+                            step_value
+                        ),
                         hint: None,
                         line: 0,
                         column: 0,
@@ -622,11 +698,14 @@ impl Interpreter {
                     });
                 }
                 step_int = n as i64;
-            },
+            }
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("FOR loop step value must evaluate to an integer number, got: {:?}", step_value),
+                    message: format!(
+                        "FOR loop step value must evaluate to an integer number, got: {:?}",
+                        step_value
+                    ),
                     hint: None,
                     line: 0,
                     column: 0,
@@ -649,7 +728,7 @@ impl Interpreter {
                 line: 0,
                 column: 0,
                 source: None,
-            })
+            });
         }
 
         let mut i = start_int;
@@ -659,7 +738,10 @@ impl Interpreter {
                 .set(identifier, Value::Integer(i))
                 .map_err(|e| CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("Failed to assign value to loop variable '{}': {}", identifier, e.message),
+                    message: format!(
+                        "Failed to assign value to loop variable '{}': {}",
+                        identifier, e.message
+                    ),
                     hint: None,
                     line: 0,
                     column: 0,
@@ -710,15 +792,24 @@ impl Interpreter {
                 match name {
                     Value::Identifier(ref iden) => {
                         // get the type of the identifier
-                        
-                        let type_ = self.current_env.borrow_mut().get_type(&iden)?;
-                        let value = Value::from_input(&input, &type_, &format!("variable '{}'", iden), self.current_env.to_owned())?;
 
-                        self.current_env.borrow_mut()
+                        let type_ = self.current_env.borrow_mut().get_type(&iden)?;
+                        let value = Value::from_input(
+                            &input,
+                            &type_,
+                            &format!("variable '{}'", iden),
+                            self.current_env.to_owned(),
+                        )?;
+
+                        self.current_env
+                            .borrow_mut()
                             .set(iden, value)
                             .map_err(|e| CPSError {
                                 error_type: ErrorType::Runtime,
-                                message: format!("Failed to assign input to '{}': {}", iden, e.message),
+                                message: format!(
+                                    "Failed to assign input to '{}': {}",
+                                    iden, e.message
+                                ),
                                 hint: None,
                                 line: 0,
                                 column: 0,
@@ -728,16 +819,19 @@ impl Interpreter {
                     _ => {
                         return Err(CPSError {
                             error_type: ErrorType::Runtime,
-                            message: format!("INPUT statement requires an identifier, got: {:?}", name),
+                            message: format!(
+                                "INPUT statement requires an identifier, got: {:?}",
+                                name
+                            ),
                             hint: None,
                             line: 0,
                             column: 0,
                             source: None,
                         });
                     }
-                } 
+                }
                 Ok(())
-            } 
+            }
             Expr::ArrayAccess { name, index, col } => {
                 let index_value = self.evaluate_expr(&index)?;
 
@@ -747,7 +841,10 @@ impl Interpreter {
                         if r.fract() != 0.0 {
                             return Err(CPSError {
                                 error_type: ErrorType::Runtime,
-                                message: format!("Array index must be an integer, got real number: {}", r),
+                                message: format!(
+                                    "Array index must be an integer, got real number: {}",
+                                    r
+                                ),
                                 hint: None,
                                 line: 0,
                                 column: 0,
@@ -759,7 +856,10 @@ impl Interpreter {
                     _ => {
                         return Err(CPSError {
                             error_type: ErrorType::Runtime,
-                            message: format!("Array index must be an integer, got: {:?}", index_value),
+                            message: format!(
+                                "Array index must be an integer, got: {:?}",
+                                index_value
+                            ),
                             hint: None,
                             line: 0,
                             column: 0,
@@ -772,13 +872,16 @@ impl Interpreter {
                     None => None,
                 };
 
-                 let col_int = match col_value {
+                let col_int = match col_value {
                     Some(Value::Integer(n)) => Some(n as isize),
                     Some(Value::Real(r)) => {
                         if r.fract() != 0.0 {
                             return Err(CPSError {
                                 error_type: ErrorType::Runtime,
-                                message: format!("Array column index must be an integer, got real number: {}", r),
+                                message: format!(
+                                    "Array column index must be an integer, got real number: {}",
+                                    r
+                                ),
                                 hint: None,
                                 line: 0,
                                 column: 0,
@@ -790,7 +893,10 @@ impl Interpreter {
                     Some(_) => {
                         return Err(CPSError {
                             error_type: ErrorType::Runtime,
-                            message: format!("Array column index must be an integer, got: {:?}", col_value),
+                            message: format!(
+                                "Array column index must be an integer, got: {:?}",
+                                col_value
+                            ),
                             hint: None,
                             line: 0,
                             column: 0,
@@ -805,7 +911,10 @@ impl Interpreter {
                     Some(_) => {
                         return Err(CPSError {
                             error_type: ErrorType::Runtime,
-                            message: format!("Array column index cannot be negative, got: {}", col_int.unwrap()),
+                            message: format!(
+                                "Array column index cannot be negative, got: {}",
+                                col_int.unwrap()
+                            ),
                             hint: None,
                             line: 0,
                             column: 0,
@@ -819,13 +928,22 @@ impl Interpreter {
                 match type_ {
                     Type::Array(arr_type) => {
                         let target = format!("array element '{}[{}]'", name, index_int);
-                        let value = Value::from_input(&input, &arr_type.base_type, &target, self.current_env.to_owned())?;
+                        let value = Value::from_input(
+                            &input,
+                            &arr_type.base_type,
+                            &target,
+                            self.current_env.to_owned(),
+                        )?;
 
-                        self.current_env.borrow_mut()
+                        self.current_env
+                            .borrow_mut()
                             .set_array_element(&name, index_int as usize, col_usize, value)
                             .map_err(|e| CPSError {
                                 error_type: ErrorType::Runtime,
-                                message: format!("Failed to assign input to array element '{}[{}]': {}", name, index_int, e.message),
+                                message: format!(
+                                    "Failed to assign input to array element '{}[{}]': {}",
+                                    name, index_int, e.message
+                                ),
                                 hint: None,
                                 line: 0,
                                 column: 0,
@@ -835,7 +953,10 @@ impl Interpreter {
                     _ => {
                         return Err(CPSError {
                             error_type: ErrorType::Runtime,
-                            message: format!("Identifier '{}' is not an array for INPUT statement", name),
+                            message: format!(
+                                "Identifier '{}' is not an array for INPUT statement",
+                                name
+                            ),
                             hint: None,
                             line: 0,
                             column: 0,
@@ -844,13 +965,14 @@ impl Interpreter {
                     }
                 }
                 Ok(())
-
-
             }
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("INPUT statement requires an identifier, got: {:?}", identifier),
+                    message: format!(
+                        "INPUT statement requires an identifier, got: {:?}",
+                        identifier
+                    ),
                     hint: None,
                     line: 0,
                     column: 0,
@@ -860,7 +982,12 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_if_stmt(&mut self, condition: &Expr, then_branch: &BlockStmt, else_brach: &Option<BlockStmt>) -> Result<(), CPSError> {
+    fn evaluate_if_stmt(
+        &mut self,
+        condition: &Expr,
+        then_branch: &BlockStmt,
+        else_brach: &Option<BlockStmt>,
+    ) -> Result<(), CPSError> {
         let cond_value = self.evaluate_expr(condition)?;
         match cond_value {
             Value::Boolean(true) => {
@@ -878,7 +1005,10 @@ impl Interpreter {
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("Condition in IF statement did not evaluate to a boolean: {:?}", cond_value),
+                    message: format!(
+                        "Condition in IF statement did not evaluate to a boolean: {:?}",
+                        cond_value
+                    ),
                     hint: None,
                     line: 0,
                     column: 0,
@@ -890,23 +1020,27 @@ impl Interpreter {
     }
 
     fn evaluate_case_stmt(
-        &mut self, 
-        identifier: &Box<Expr>, 
-        cases: &Vec<(CaseCondition, BlockStmt)>, 
-        otherwise: &Option<BlockStmt>
+        &mut self,
+        identifier: &Box<Expr>,
+        cases: &Vec<(CaseCondition, BlockStmt)>,
+        otherwise: &Option<BlockStmt>,
     ) -> Result<(), CPSError> {
         let mut comparitor_value = self.evaluate_expr(identifier)?;
 
         match comparitor_value {
             Value::Identifier(iden) => {
-                comparitor_value = self.current_env.borrow().get(&iden).ok_or_else(|| CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("Undefined identifier in CASE statement: {}", iden),
-                    hint: None,
-                    line: 0,
-                    column: 0,
-                    source: None,
-                })?;
+                comparitor_value =
+                    self.current_env
+                        .borrow()
+                        .get(&iden)
+                        .ok_or_else(|| CPSError {
+                            error_type: ErrorType::Runtime,
+                            message: format!("Undefined identifier in CASE statement: {}", iden),
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        })?;
             }
             _ => {}
         }
@@ -929,7 +1063,11 @@ impl Interpreter {
         Ok(())
     }
 
-    fn matches_case_condition(&mut self, value: &Value, condition: &CaseCondition) -> Result<bool, CPSError> {
+    fn matches_case_condition(
+        &mut self,
+        value: &Value,
+        condition: &CaseCondition,
+    ) -> Result<bool, CPSError> {
         match condition {
             CaseCondition::Single(case_expr) => {
                 let case_value = self.evaluate_expr(case_expr)?;
@@ -948,7 +1086,12 @@ impl Interpreter {
         Ok(values_are_equal(&a_converted, &b_converted).unwrap_or(false))
     }
 
-    fn value_in_range(&mut self, value: &Value, start: &Value, end: &Value) -> Result<bool, CPSError> {
+    fn value_in_range(
+        &mut self,
+        value: &Value,
+        start: &Value,
+        end: &Value,
+    ) -> Result<bool, CPSError> {
         let (value_conv, start_conv) = convert_values_to_compatible_types(value, start);
         let (value_final, end_conv) = convert_values_to_compatible_types(&value_conv, end);
 
@@ -961,15 +1104,17 @@ impl Interpreter {
             }
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Invalid range comparison: {:?} TO {:?} for value {:?}", start, end, value),
+                message: format!(
+                    "Invalid range comparison: {:?} TO {:?} for value {:?}",
+                    start, end, value
+                ),
                 hint: Some("Range values must be compatible types".to_string()),
                 line: 0,
                 column: 0,
                 source: None,
-            })
+            }),
         }
     }
-
 
     fn evaluate_while_stmt(&mut self, condition: &Expr, body: &BlockStmt) -> Result<(), CPSError> {
         loop {
@@ -982,7 +1127,10 @@ impl Interpreter {
                 _ => {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("Condition in WHILE statement did not evaluate to a boolean: {:?}", cond_value),
+                        message: format!(
+                            "Condition in WHILE statement did not evaluate to a boolean: {:?}",
+                            cond_value
+                        ),
                         hint: None,
                         line: 0,
                         column: 0,
@@ -1004,7 +1152,10 @@ impl Interpreter {
                 _ => {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("Condition in REPEAT statement did not evaluate to a boolean: {:?}", cond_value),
+                        message: format!(
+                            "Condition in REPEAT statement did not evaluate to a boolean: {:?}",
+                            cond_value
+                        ),
                         hint: None,
                         line: 0,
                         column: 0,
@@ -1016,18 +1167,28 @@ impl Interpreter {
         Ok(())
     }
 
-    fn evaluate_open_file(&mut self, filename: &Box<Expr>, mode: &FileMode) -> Result<(), CPSError> {
+    fn evaluate_open_file(
+        &mut self,
+        filename: &Box<Expr>,
+        mode: &FileMode,
+    ) -> Result<(), CPSError> {
         if let Some(ctx_rc) = self.replay_ctx.clone() {
             let filename_value = self.evaluate_expr(filename)?;
-            let filename_str = match filename_value {
-                Value::String(s) => s,
-                other => return Err(CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("Filename in OPENFILE statement must evaluate to a string, got: {:?}", other),
-                    hint: None,
-                    line: 0, column: 0, source: None,
-                }),
-            };
+            let filename_str =
+                match filename_value {
+                    Value::String(s) => s,
+                    other => return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!(
+                            "Filename in OPENFILE statement must evaluate to a string, got: {:?}",
+                            other
+                        ),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    }),
+                };
             let ctx = ctx_rc.borrow();
             let mut vfs = ctx.virtual_fs.borrow_mut();
             match mode {
@@ -1065,7 +1226,10 @@ impl Interpreter {
                 FileMode::Read => {
                     let entry = vfs.get_mut(&filename_str).ok_or_else(|| CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("File '{}' not found; it must be preloaded before opening for read", filename_str),
+                        message: format!(
+                            "File '{}' not found; it must be preloaded before opening for read",
+                            filename_str
+                        ),
                         hint: None,
                         line: 0,
                         column: 0,
@@ -1085,7 +1249,10 @@ impl Interpreter {
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("Filename in OPENFILE statement must evaluate to a string, got: {:?}", filename_value),
+                    message: format!(
+                        "Filename in OPENFILE statement must evaluate to a string, got: {:?}",
+                        filename_value
+                    ),
                     hint: None,
                     line: 0,
                     column: 0,
@@ -1094,23 +1261,30 @@ impl Interpreter {
             }
         }
 
-        self.current_env.borrow_mut().openfile(&filename_str, mode)?;
+        self.current_env
+            .borrow_mut()
+            .openfile(&filename_str, mode)?;
         Ok(())
-
     }
 
     fn evaluate_close_file(&mut self, filename: &Box<Expr>) -> Result<(), CPSError> {
         if let Some(ctx_rc) = self.replay_ctx.clone() {
             let filename_value = self.evaluate_expr(filename)?;
-            let filename_str = match filename_value {
-                Value::String(s) => s,
-                other => return Err(CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("Filename in CLOSEFILE statement must evaluate to a string, got: {:?}", other),
-                    hint: None,
-                    line: 0, column: 0, source: None,
-                }),
-            };
+            let filename_str =
+                match filename_value {
+                    Value::String(s) => s,
+                    other => return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!(
+                            "Filename in CLOSEFILE statement must evaluate to a string, got: {:?}",
+                            other
+                        ),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    }),
+                };
             let ctx = ctx_rc.borrow();
             let mut vfs = ctx.virtual_fs.borrow_mut();
             if let Some(vfile) = vfs.get_mut(&filename_str) {
@@ -1121,7 +1295,9 @@ impl Interpreter {
                 error_type: ErrorType::Runtime,
                 message: format!("Cannot close file '{}': file is not open", filename_str),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             });
         }
         let filename_value = self.evaluate_expr(filename)?;
@@ -1131,7 +1307,10 @@ impl Interpreter {
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("Filename in CLOSEFILE statement must evaluate to a string, got: {:?}", filename_value),
+                    message: format!(
+                        "Filename in CLOSEFILE statement must evaluate to a string, got: {:?}",
+                        filename_value
+                    ),
                     hint: None,
                     line: 0,
                     column: 0,
@@ -1143,18 +1322,28 @@ impl Interpreter {
         self.current_env.borrow_mut().closefile(&filename_str)
     }
 
-    fn evaluate_write_file(&mut self, filename: &Box<Expr>, value: &Box<Expr>) -> Result<(), CPSError> {
+    fn evaluate_write_file(
+        &mut self,
+        filename: &Box<Expr>,
+        value: &Box<Expr>,
+    ) -> Result<(), CPSError> {
         if let Some(ctx_rc) = self.replay_ctx.clone() {
             let filename_value = self.evaluate_expr(filename)?;
-            let filename_str = match filename_value {
-                Value::String(s) => s,
-                other => return Err(CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("Filename in WRITEFILE statement must evaluate to a string, got: {:?}", other),
-                    hint: None,
-                    line: 0, column: 0, source: None,
-                }),
-            };
+            let filename_str =
+                match filename_value {
+                    Value::String(s) => s,
+                    other => return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!(
+                            "Filename in WRITEFILE statement must evaluate to a string, got: {:?}",
+                            other
+                        ),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    }),
+                };
             let value_to_write = self.evaluate_expr(value)?;
             let line = value_to_write.to_output_string("write")?;
             let ctx = ctx_rc.borrow();
@@ -1163,9 +1352,14 @@ impl Interpreter {
                 if vfile.mode == FileMode::Read {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("Cannot write to file '{}': file is opened in read mode", filename_str),
+                        message: format!(
+                            "Cannot write to file '{}': file is opened in read mode",
+                            filename_str
+                        ),
                         hint: None,
-                        line: 0, column: 0, source: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
                     });
                 }
                 // if the write_pos < lines.len(), then this write is already captured in the log, so we just advance the cursor without writing
@@ -1182,7 +1376,9 @@ impl Interpreter {
                 error_type: ErrorType::Runtime,
                 message: format!("File '{}' is not open", filename_str),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             });
         }
         let filename_value = self.evaluate_expr(filename)?;
@@ -1192,7 +1388,10 @@ impl Interpreter {
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("Filename in WRITEFILE statement must evaluate to a string, got: {:?}", filename_value),
+                    message: format!(
+                        "Filename in WRITEFILE statement must evaluate to a string, got: {:?}",
+                        filename_value
+                    ),
                     hint: None,
                     line: 0,
                     column: 0,
@@ -1203,7 +1402,9 @@ impl Interpreter {
 
         let value_to_write = self.evaluate_expr(value)?;
 
-        self.current_env.borrow_mut().writefile(&filename_str, &value_to_write)
+        self.current_env
+            .borrow_mut()
+            .writefile(&filename_str, &value_to_write)
     }
 
     /// Stores one line read from a file into the target, converted to the
@@ -1212,16 +1413,26 @@ impl Interpreter {
         match target {
             Expr::Literal(Value::Identifier(iden)) => {
                 let type_ = self.current_env.borrow_mut().get_type(iden)?;
-                let value = Value::from_input(&line, &type_, &format!("variable '{}'", iden), self.current_env.to_owned())?;
+                let value = Value::from_input(
+                    &line,
+                    &type_,
+                    &format!("variable '{}'", iden),
+                    self.current_env.to_owned(),
+                )?;
 
                 self.current_env
                     .borrow_mut()
                     .set(iden, value)
                     .map_err(|e| CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("Failed to assign READFILE result to '{}': {}", iden, e.message),
+                        message: format!(
+                            "Failed to assign READFILE result to '{}': {}",
+                            iden, e.message
+                        ),
                         hint: None,
-                        line: 0, column: 0, source: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
                     })
             }
             Expr::ArrayAccess { name, index, col } => {
@@ -1230,27 +1441,35 @@ impl Interpreter {
                 if index_int < 0 {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("Array index cannot be negative for '{}': {}", name, index_int),
+                        message: format!(
+                            "Array index cannot be negative for '{}': {}",
+                            name, index_int
+                        ),
                         hint: None,
-                        line: 0, column: 0, source: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
                     });
                 }
                 let col_int = match col {
                     Some(col_expr) => {
                         let col_value = self.evaluate_expr(col_expr)?;
-                        let c =  self.value_to_index(&col_value, name)?;
+                        let c = self.value_to_index(&col_value, name)?;
 
                         if c < 0 {
                             return Err(CPSError {
                                 error_type: ErrorType::Runtime,
-                                message: format!("Column index cannot be negative for '{}': {}", name, c),
+                                message: format!(
+                                    "Column index cannot be negative for '{}': {}",
+                                    name, c
+                                ),
                                 hint: None,
-                                line: 0, column: 0, source: None,
+                                line: 0,
+                                column: 0,
+                                source: None,
                             });
                         }
                         Some(c)
-
-
                     }
                     None => None,
                 };
@@ -1258,47 +1477,77 @@ impl Interpreter {
                 let var_type = self.current_env.borrow_mut().get_type(name)?;
                 let base_type = match var_type {
                     Type::Array(arr_type) => *arr_type.base_type,
-                    _ => return Err(CPSError {
-                        error_type: ErrorType::Runtime,
-                        message: format!("Identifier '{}' is not an array for READFILE statement", name),
-                        hint: None,
-                        line: 0, column: 0, source: None,
-                    }),
+                    _ => {
+                        return Err(CPSError {
+                            error_type: ErrorType::Runtime,
+                            message: format!(
+                                "Identifier '{}' is not an array for READFILE statement",
+                                name
+                            ),
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        })
+                    }
                 };
 
                 let target_desc = format!("array element '{}[{}]'", name, index_int);
-                let value = Value::from_input(&line, &base_type, &target_desc, self.current_env.to_owned())?;
+                let value = Value::from_input(
+                    &line,
+                    &base_type,
+                    &target_desc,
+                    self.current_env.to_owned(),
+                )?;
 
                 self.current_env
                     .borrow_mut()
                     .set_array_element(name, index_int as usize, col_int.map(|c| c as usize), value)
                     .map_err(|e| CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("Failed to assign READFILE result to array element: {}", e.message),
+                        message: format!(
+                            "Failed to assign READFILE result to array element: {}",
+                            e.message
+                        ),
                         hint: None,
-                        line: 0, column: 0, source: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
                     })
             }
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("READFILE target must be a variable or array element, got: {:?}", target),
+                message: format!(
+                    "READFILE target must be a variable or array element, got: {:?}",
+                    target
+                ),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             }),
         }
     }
 
-    fn evaluate_read_file(&mut self, filename: &Box<Expr>, target: &Box<Expr>) -> Result<(), CPSError> {
+    fn evaluate_read_file(
+        &mut self,
+        filename: &Box<Expr>,
+        target: &Box<Expr>,
+    ) -> Result<(), CPSError> {
         if let Some(ctx_rc) = self.replay_ctx.clone() {
             let filename_value = self.evaluate_expr(filename)?;
             let filename_str = match filename_value {
                 Value::String(s) => s,
-                other => return Err(CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!("Filename in READFILE must be a string, got: {:?}", other),
-                    hint: None,
-                    line: 0, column: 0, source: None,
-                }),
+                other => {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Filename in READFILE must be a string, got: {:?}", other),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    })
+                }
             };
             let line = {
                 let ctx = ctx_rc.borrow();
@@ -1307,9 +1556,14 @@ impl Interpreter {
                     if vfile.mode != FileMode::Read {
                         return Err(CPSError {
                             error_type: ErrorType::Runtime,
-                            message: format!("Cannot read from file '{}': file is not opened in read mode", filename_str),
+                            message: format!(
+                                "Cannot read from file '{}': file is not opened in read mode",
+                                filename_str
+                            ),
                             hint: None,
-                            line: 0, column: 0, source: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
                         });
                     }
                     if vfile.read_pos >= vfile.lines.len() {
@@ -1317,7 +1571,9 @@ impl Interpreter {
                             error_type: ErrorType::Runtime,
                             message: format!("Cannot read past end of file '{}'", filename_str),
                             hint: Some("Check EOF before reading".to_string()),
-                            line: 0, column: 0, source: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
                         });
                     }
                     let line = vfile.lines[vfile.read_pos].clone();
@@ -1328,7 +1584,9 @@ impl Interpreter {
                         error_type: ErrorType::Runtime,
                         message: format!("File '{}' is not open", filename_str),
                         hint: None,
-                        line: 0, column: 0, source: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
                     });
                 }
             };
@@ -1337,12 +1595,19 @@ impl Interpreter {
         let filename_value = self.evaluate_expr(filename)?;
         let filename_str = match &filename_value {
             Value::String(s) => s.clone(),
-            _ => return Err(CPSError {
-                error_type: ErrorType::Runtime,
-                message: format!("Filename in READFILE must be a string, got: {:?}", filename_value),
-                hint: None,
-                line: 0, column: 0, source: None,
-            }),
+            _ => {
+                return Err(CPSError {
+                    error_type: ErrorType::Runtime,
+                    message: format!(
+                        "Filename in READFILE must be a string, got: {:?}",
+                        filename_value
+                    ),
+                    hint: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
+                })
+            }
         };
 
         let line = self.current_env.borrow_mut().readfile(&filename_str)?;
@@ -1359,9 +1624,14 @@ impl Interpreter {
             Value::Real(r) if r.fract() == 0.0 => Ok(r as i64),
             other => Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Array {} bound must be a whole number, got {:?}", what, other),
+                message: format!(
+                    "Array {} bound must be a whole number, got {:?}",
+                    what, other
+                ),
                 hint: Some("Array bounds must evaluate to INTEGER values.".to_string()),
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             }),
         }
     }
@@ -1381,33 +1651,47 @@ impl Interpreter {
         })
     }
 
-    fn resolve_parameters(&self, parameters: &Vec<(String, Type, PassingValue)>) -> Result<Vec<(String, Type, PassingValue)>, CPSError> {
+    fn resolve_parameters(
+        &self,
+        parameters: &Vec<(String, Type, PassingValue)>,
+    ) -> Result<Vec<(String, Type, PassingValue)>, CPSError> {
         parameters
             .iter()
-            .map(|(name, type_, passing_value)| Ok((name.to_owned(), self.resolve_type(type_)?, passing_value.to_owned())))
+            .map(|(name, type_, passing_value)| {
+                Ok((
+                    name.to_owned(),
+                    self.resolve_type(type_)?,
+                    passing_value.to_owned(),
+                ))
+            })
             .collect()
     }
 
     /// The value a variable of this type holds before anything is assigned to it.
     fn default_value(&mut self, ty: &Type) -> Result<Value, CPSError> {
-        Ok(match ty { 
+        Ok(match ty {
             // TODO: Set all variable default types to be NONE, for them to only have Some after being assigned something
             Type::Integer => Value::Integer(0),
-            Type::Real    => Value::Real(0.0),
-            Type::String  => Value::String(String::new()),
+            Type::Real => Value::Real(0.0),
+            Type::String => Value::String(String::new()),
             Type::Boolean => Value::Boolean(false),
-            Type::Char    => Value::Char('\0'),
-            Type::Date    => Value::Date(Date { day: 1, month: 1, year: 1900 }),
-            Type::Enum(type_name) => Value::Enum { type_name: type_name.to_owned(), variant: None },
+            Type::Char => Value::Char('\0'),
+            Type::Date => Value::Date(Date {
+                day: 1,
+                month: 1,
+                year: 1900,
+            }),
+            Type::Enum(type_name) => Value::Enum {
+                type_name: type_name.to_owned(),
+                variant: None,
+            },
             Type::Named(name) => {
                 // find the actual type
-                let type_ = self.current_env.borrow()
-                    .find_type_of_named_type(name)?;
+                let type_ = self.current_env.borrow().find_type_of_named_type(name)?;
 
-                return self.default_value(&type_)
+                return self.default_value(&type_);
             }
             // Type::Enum(Name) => todo!(),
-
             Type::Array(arr) => {
                 let lower = self.evaluate_bound(&arr.lower_bound, "lower")?;
                 let upper = self.evaluate_bound(&arr.upper_bound, "upper")?;
@@ -1415,32 +1699,47 @@ impl Interpreter {
                 if upper < lower {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("Array upper bound {} cannot be less than lower bound {}", upper, lower),
-                        hint: None, line: 0, column: 0, source: None,
+                        message: format!(
+                            "Array upper bound {} cannot be less than lower bound {}",
+                            upper, lower
+                        ),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
                     });
                 }
                 if lower < 0 {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
                         message: format!("Array lower bound {} cannot be negative", lower),
-                        hint: Some("Cambridge pseudocode arrays are usually indexed from 1.".to_string()),
-                        line: 0, column: 0, source: None,
+                        hint: Some(
+                            "Cambridge pseudocode arrays are usually indexed from 1.".to_string(),
+                        ),
+                        line: 0,
+                        column: 0,
+                        source: None,
                     });
                 }
 
                 // let row_count = (upper - lower + 1) as usize;
-                let row_count = match upper.checked_sub(lower)
+                let row_count = match upper
+                    .checked_sub(lower)
                     .and_then(|num| num.checked_add(1))
-                    .and_then(|num| usize::try_from(num).ok()) {
-                        Some(n) => n,
-                        None => 
-                        {
-                            return Err(CPSError {
-                        error_type: ErrorType::Runtime,
-                        message: format!("Array size [{}:{}] is too large", lower, upper),
-                        hint: None, line: 0, column: 0, source: None,
-                    })}
-                    };
+                    .and_then(|num| usize::try_from(num).ok())
+                {
+                    Some(n) => n,
+                    None => {
+                        return Err(CPSError {
+                            error_type: ErrorType::Runtime,
+                            message: format!("Array size [{}:{}] is too large", lower, upper),
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
+                        })
+                    }
+                };
 
                 let bounds_2d = match &arr.bounds_2d {
                     Some((col_lb_expr, col_ub_expr)) => {
@@ -1450,16 +1749,30 @@ impl Interpreter {
                         if col_ub < col_lb {
                             return Err(CPSError {
                                 error_type: ErrorType::Runtime,
-                                message: format!("Column upper bound {} cannot be less than lower bound {}", col_ub, col_lb),
-                                hint: None, line: 0, column: 0, source: None,
+                                message: format!(
+                                    "Column upper bound {} cannot be less than lower bound {}",
+                                    col_ub, col_lb
+                                ),
+                                hint: None,
+                                line: 0,
+                                column: 0,
+                                source: None,
                             });
                         }
                         if col_lb < 0 {
                             return Err(CPSError {
                                 error_type: ErrorType::Runtime,
-                                message: format!("Array column lower bound {} cannot be negative", col_lb),
-                                hint: Some("Cambridge pseudocode arrays are usually indexed from 1.".to_string()),
-                                line: 0, column: 0, source: None,
+                                message: format!(
+                                    "Array column lower bound {} cannot be negative",
+                                    col_lb
+                                ),
+                                hint: Some(
+                                    "Cambridge pseudocode arrays are usually indexed from 1."
+                                        .to_string(),
+                                ),
+                                line: 0,
+                                column: 0,
+                                source: None,
                             });
                         }
                         Some((col_lb as usize, col_ub as usize))
@@ -1474,16 +1787,24 @@ impl Interpreter {
                         .ok_or_else(|| CPSError {
                             error_type: ErrorType::Runtime,
                             message: "Array size is too large".to_string(),
-                            hint: None, line: 0, column: 0, source: None,
+                            hint: None,
+                            line: 0,
+                            column: 0,
+                            source: None,
                         })?,
                     None => row_count,
                 };
                 if total_length > MAX_ELEMENTS {
                     return Err(CPSError {
                         error_type: ErrorType::Runtime,
-                        message: format!("Array of {} elements exceeds the supported limit", total_length),
+                        message: format!(
+                            "Array of {} elements exceeds the supported limit",
+                            total_length
+                        ),
                         hint: Some("Reduce the array bounds.".to_string()),
-                        line: 0, column: 0, source: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
                     });
                 }
 
@@ -1512,9 +1833,11 @@ impl Interpreter {
         })
     }
 
-
-
-    fn evaluate_declaration_stmt(&mut self, identifier: &String, type_: &Type) -> Result<(), CPSError> {
+    fn evaluate_declaration_stmt(
+        &mut self,
+        identifier: &String,
+        type_: &Type,
+    ) -> Result<(), CPSError> {
         let inital_value = self.default_value(type_)?;
 
         self.current_env
@@ -1523,9 +1846,13 @@ impl Interpreter {
         Ok(())
     }
 
-
-    fn evaluate_enum_declaration(&mut self, identifier: &String, variants: &Vec<String>) -> Result<(), CPSError> {
-        self.current_env.borrow_mut()
+    fn evaluate_enum_declaration(
+        &mut self,
+        identifier: &String,
+        variants: &Vec<String>,
+    ) -> Result<(), CPSError> {
+        self.current_env
+            .borrow_mut()
             .define_enum(identifier, variants)?;
 
         Ok(())
@@ -1538,16 +1865,22 @@ impl Interpreter {
         Ok(())
     }
 
-
-
-    fn evaluate_procedure(&mut self, identifier: &String, parameters: &Vec<(String, Type, PassingValue)>, body: &BlockStmt) -> Result<(), CPSError> {
+    fn evaluate_procedure(
+        &mut self,
+        identifier: &String,
+        parameters: &Vec<(String, Type, PassingValue)>,
+        body: &BlockStmt,
+    ) -> Result<(), CPSError> {
         // self.evaluate_declaration_stmt(identifier, &Type::Function)?;
 
         // first check if procedure is a builtin
         if BUILTIN_FUNCTIONS.contains(&identifier.as_str()) {
             return Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Cannot redefine builtin function as procedure: {}", identifier),
+                message: format!(
+                    "Cannot redefine builtin function as procedure: {}",
+                    identifier
+                ),
                 hint: None,
                 line: 0,
                 column: 0,
@@ -1565,18 +1898,19 @@ impl Interpreter {
             .borrow_mut()
             .define(identifier.to_owned(), function_value)?;
 
-
         // self.evaluate_assignment_stmt(
-        //     identifier, 
+        //     identifier,
         //     &Ast::Expression(Expr::Literal(function_value))
         // )?;
-
-
 
         Ok(())
     }
 
-    fn evaluate_call(&mut self, identifier: &String, arguments: &Vec<Expr>) -> Result<Value, CPSError> {
+    fn evaluate_call(
+        &mut self,
+        identifier: &String,
+        arguments: &Vec<Expr>,
+    ) -> Result<Value, CPSError> {
         if identifier == "RAND" {
             let rand_ctx = self.replay_ctx.as_ref().map(Rc::clone);
             if let Some(ctx_rc) = rand_ctx {
@@ -1600,10 +1934,11 @@ impl Interpreter {
                     ctx_rc.borrow_mut().rand_pos += 1;
                     return Ok(val);
                 }
-                let value = match crate::Inter::builtins::call_builtin(identifier.clone(), &arg_values)? {
-                    Some(v) => v,
-                    None => Value::Boolean(false),
-                };
+                let value =
+                    match crate::Inter::builtins::call_builtin(identifier.clone(), &arg_values)? {
+                        Some(v) => v,
+                        None => Value::Boolean(false),
+                    };
                 let mut ctx = ctx_rc.borrow_mut();
                 ctx.rand_log.push(value.clone());
                 ctx.rand_pos += 1;
@@ -1620,10 +1955,9 @@ impl Interpreter {
             let arg_values = arg_values?;
             return match crate::Inter::builtins::call_builtin(identifier.clone(), &arg_values)? {
                 Some(value) => Ok(value),
-                None => Ok(Value::Boolean(false))
+                None => Ok(Value::Boolean(false)),
             };
         }
-
 
         let func_value = match self.current_env.borrow().get(identifier) {
             Some(Value::Function(func)) => func,
@@ -1642,7 +1976,12 @@ impl Interpreter {
         if func_value.parameters.len() != arguments.len() {
             return Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Function '{}' expected {} arguments, got {}", identifier, func_value.parameters.len(), arguments.len()),
+                message: format!(
+                    "Function '{}' expected {} arguments, got {}",
+                    identifier,
+                    func_value.parameters.len(),
+                    arguments.len()
+                ),
                 hint: None,
                 line: 0,
                 column: 0,
@@ -1652,7 +1991,8 @@ impl Interpreter {
 
         let new_env = Environment::new_child(Rc::clone(&self.current_env));
 
-        for (i, (param_name, param_type, passing_value)) in func_value.parameters.iter().enumerate() {
+        for (i, (param_name, param_type, passing_value)) in func_value.parameters.iter().enumerate()
+        {
             match passing_value {
                 PassingValue::ByVal => {
                     let arg_value = self.evaluate_expr(&arguments[i])?;
@@ -1671,8 +2011,11 @@ impl Interpreter {
                         });
                     }
 
-                    let converted = convert_values_to_base_type(&arg_value, param_type).unwrap_or(arg_value);
-                    new_env.borrow_mut().define(param_name.to_owned(), converted)?;
+                    let converted =
+                        convert_values_to_base_type(&arg_value, param_type).unwrap_or(arg_value);
+                    new_env
+                        .borrow_mut()
+                        .define(param_name.to_owned(), converted)?;
                 }
                 PassingValue::ByRef => {
                     let current_arg = &arguments[i];
@@ -1693,9 +2036,13 @@ impl Interpreter {
                                 });
                             }
 
-                            // get the address 
-                            let address = match self.current_env.borrow_mut().find_address_of_variable(caller_variable_name.to_owned()) {
-                                Some(a) => {a},
+                            // get the address
+                            let address = match self
+                                .current_env
+                                .borrow_mut()
+                                .find_address_of_variable(caller_variable_name.to_owned())
+                            {
+                                Some(a) => a,
                                 None => {
                                     return Err(CPSError {
                                         error_type: ErrorType::Runtime,
@@ -1711,17 +2058,26 @@ impl Interpreter {
                                         column: 0,
                                         source: None,
                                     });
-
                                 }
                             };
 
-                            let arg_value = self.current_env.borrow().get(caller_variable_name).ok_or_else(|| CPSError {
-                                error_type: ErrorType::Runtime,
-                                message: format!("Undefined variable '{}'", caller_variable_name),
-                                hint: None,
-                                line: 0, column: 0, source: None,
-                            })?;
-                            let actual_type = self.find_actual_type(&arg_value, caller_variable_name)?;
+                            let arg_value = self
+                                .current_env
+                                .borrow()
+                                .get(caller_variable_name)
+                                .ok_or_else(|| CPSError {
+                                    error_type: ErrorType::Runtime,
+                                    message: format!(
+                                        "Undefined variable '{}'",
+                                        caller_variable_name
+                                    ),
+                                    hint: None,
+                                    line: 0,
+                                    column: 0,
+                                    source: None,
+                                })?;
+                            let actual_type =
+                                self.find_actual_type(&arg_value, caller_variable_name)?;
 
                             if !check_if_types_match_exactly(&actual_type, param_type) {
                                 return Err(CPSError {
@@ -1735,7 +2091,9 @@ impl Interpreter {
                                 });
                             }
 
-                            new_env.borrow_mut().set_variable_at_address(param_name.clone(), address)?;
+                            new_env
+                                .borrow_mut()
+                                .set_variable_at_address(param_name.clone(), address)?;
                         }
                         _ => {
                             return Err(CPSError {
@@ -1763,7 +2121,10 @@ impl Interpreter {
         for stmt in &func_value.body.statements {
             match self.evaluate_stmt(stmt) {
                 Ok(_) => {}
-                Err(CPSError { error_type: ErrorType::Return(val), .. }) => {
+                Err(CPSError {
+                    error_type: ErrorType::Return(val),
+                    ..
+                }) => {
                     return_value = Some(val);
                     break;
                 }
@@ -1790,24 +2151,26 @@ impl Interpreter {
                 }
                 Ok(val.clone())
             }
-            (None, Some(expected_type)) => {
-                Err(CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: format!(
-                        "Function '{}' must return a value of type {:?}",
-                        identifier, expected_type
-                    ),
-                    hint: Some("Add a RETURN statement".to_string()),
-                    line: 0,
-                    column: 0,
-                    source: None,
-                })
-            }
-            (Some(_), None) => { // procedure return (error)
+            (None, Some(expected_type)) => Err(CPSError {
+                error_type: ErrorType::Runtime,
+                message: format!(
+                    "Function '{}' must return a value of type {:?}",
+                    identifier, expected_type
+                ),
+                hint: Some("Add a RETURN statement".to_string()),
+                line: 0,
+                column: 0,
+                source: None,
+            }),
+            (Some(_), None) => {
+                // procedure return (error)
                 Err(CPSError {
                     error_type: ErrorType::Runtime,
                     message: format!("Procedure '{}' should not return a value", identifier),
-                    hint: Some("Use FUNCTION instead of PROCEDURE if you need to return a value".to_string()),
+                    hint: Some(
+                        "Use FUNCTION instead of PROCEDURE if you need to return a value"
+                            .to_string(),
+                    ),
                     line: 0,
                     column: 0,
                     source: None,
@@ -1819,8 +2182,13 @@ impl Interpreter {
         }
     }
 
-
-    fn evaluate_function(&mut self, identifier: &String, parameters: &Vec<(String, Type, PassingValue)>, return_type: Type, body: &BlockStmt) -> Result<(), CPSError> {
+    fn evaluate_function(
+        &mut self,
+        identifier: &String,
+        parameters: &Vec<(String, Type, PassingValue)>,
+        return_type: Type,
+        body: &BlockStmt,
+    ) -> Result<(), CPSError> {
         // first check if function is a builtin
         if BUILTIN_FUNCTIONS.contains(&identifier.as_str()) {
             return Err(CPSError {
@@ -1846,7 +2214,6 @@ impl Interpreter {
         Ok(())
     }
 
-
     fn evaluate_expr(&mut self, expression: &Expr) -> Result<Value, CPSError> {
         match expression {
             Expr::Binary(expr) => self.evaluate_binary(expr),
@@ -1864,26 +2231,32 @@ impl Interpreter {
                         error_type: ErrorType::Runtime,
                         message: format!("File '{}' is not open", filename),
                         hint: Some("Make sure to open the file before checking EOF".to_string()),
-                        line: 0, column: 0, source: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
                     });
                 }
                 let is_eof = self.current_env.borrow().is_eof(filename)?;
                 Ok(Value::Boolean(is_eof))
-            }
-            // _ => {
-            //     return Err(CPSError {
-            //         error_type: ErrorType::Runtime,
-            //         message: format!("Unsupported expression in interpreter: {:?}", expression),
-            //         hint: None,
-            //         line: 0,
-            //         column: 0,
-            //         source: None,
-            //     });
-            // }
+            } // _ => {
+              //     return Err(CPSError {
+              //         error_type: ErrorType::Runtime,
+              //         message: format!("Unsupported expression in interpreter: {:?}", expression),
+              //         hint: None,
+              //         line: 0,
+              //         column: 0,
+              //         source: None,
+              //     });
+              // }
         }
     }
 
-    fn evaluate_array_access(&mut self, name: &String, index: &Box<Expr>, col: &Option<Box<Expr>>) -> Result<Value, CPSError> {
+    fn evaluate_array_access(
+        &mut self,
+        name: &String,
+        index: &Box<Expr>,
+        col: &Option<Box<Expr>>,
+    ) -> Result<Value, CPSError> {
         let index_value = self.evaluate_expr(index)?;
         let index_int = self.value_to_index(&index_value, name)?;
 
@@ -1898,9 +2271,14 @@ impl Interpreter {
         if index_int < 0 {
             return Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Array index cannot be negative for '{}': {}", name, index_int),
+                message: format!(
+                    "Array index cannot be negative for '{}': {}",
+                    name, index_int
+                ),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             });
         }
 
@@ -1910,14 +2288,18 @@ impl Interpreter {
                     error_type: ErrorType::Runtime,
                     message: format!("Column index cannot be negative for '{}': {}", name, c),
                     hint: None,
-                    line: 0, column: 0, source: None,
+                    line: 0,
+                    column: 0,
+                    source: None,
                 });
             }
         }
 
-        self.current_env
-            .borrow()
-            .get_array_element(name, index_int as usize, col_int.map(|c| c as usize))
+        self.current_env.borrow().get_array_element(
+            name,
+            index_int as usize,
+            col_int.map(|c| c as usize),
+        )
     }
 
     fn value_to_index(&self, value: &Value, name: &str) -> Result<isize, CPSError> {
@@ -1929,20 +2311,26 @@ impl Interpreter {
                         error_type: ErrorType::Runtime,
                         message: format!("Array index must be an integer, got: {}", r),
                         hint: None,
-                        line: 0, column: 0, source: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
                     });
                 }
                 Ok(*r as isize)
             }
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Array index must be an integer for '{}', got: {:?}", name, value),
+                message: format!(
+                    "Array index must be an integer for '{}', got: {:?}",
+                    name, value
+                ),
                 hint: None,
-                line: 0, column: 0, source: None,
+                line: 0,
+                column: 0,
+                source: None,
             }),
         }
     }
-
 
     fn evaluate_binary(&mut self, binary: &BinaryExpr) -> Result<Value, CPSError> {
         let mut left = self.evaluate_ast(*binary.left.clone())?;
@@ -1961,7 +2349,6 @@ impl Interpreter {
 
         // convert them to compatible types
         (left, right) = convert_values_to_compatible_types(&left, &right); // allow comparison between int and real
-
 
         match binary.operator {
             TokenType::Plus => self.add(left, right),
@@ -1987,14 +2374,16 @@ impl Interpreter {
 
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Unsupported binary operator in interpreter: {:?}", binary.operator),
+                message: format!(
+                    "Unsupported binary operator in interpreter: {:?}",
+                    binary.operator
+                ),
                 hint: None,
                 line: 0,
                 column: 0,
                 source: None,
             }),
         }
-
     }
 
     fn add(&self, left: Value, right: Value) -> Result<Value, CPSError> {
@@ -2022,7 +2411,10 @@ impl Interpreter {
             (Value::Real(l), Value::Integer(r)) => Ok(Value::Real(l - r as f64)),
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Unsupported types for subtraction: {:?} - {:?}", left, right),
+                message: format!(
+                    "Unsupported types for subtraction: {:?} - {:?}",
+                    left, right
+                ),
                 hint: None,
                 line: 0,
                 column: 0,
@@ -2039,7 +2431,10 @@ impl Interpreter {
             (Value::Real(l), Value::Integer(r)) => Ok(Value::Real(l * r as f64)),
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Unsupported types for multiplication: {:?} * {:?}", left, right),
+                message: format!(
+                    "Unsupported types for multiplication: {:?} * {:?}",
+                    left, right
+                ),
                 hint: None,
                 line: 0,
                 column: 0,
@@ -2056,16 +2451,14 @@ impl Interpreter {
         };
 
         if is_zero {
-            return Err(
-                CPSError {
-                    error_type: ErrorType::Runtime,
-                    message: "Division by zero".to_string(),
-                    hint: None,
-                    line: 0,
-                    column: 0,
-                    source: None,
-                }
-            );
+            return Err(CPSError {
+                error_type: ErrorType::Runtime,
+                message: "Division by zero".to_string(),
+                hint: None,
+                line: 0,
+                column: 0,
+                source: None,
+            });
         }
 
         match (left.clone(), right.clone()) {
@@ -2082,7 +2475,6 @@ impl Interpreter {
                 source: None,
             }),
         }
-
     }
 
     fn integer_divide(&self, left: Value, right: Value) -> Result<Value, CPSError> {
@@ -2115,7 +2507,10 @@ impl Interpreter {
             }
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Unsupported types for integer division: {:?} // {:?}", left, right),
+                message: format!(
+                    "Unsupported types for integer division: {:?} // {:?}",
+                    left, right
+                ),
                 hint: None,
                 line: 0,
                 column: 0,
@@ -2138,7 +2533,7 @@ impl Interpreter {
                     });
                 }
                 Ok(Value::Integer(a % b))
-            },
+            }
             (Value::Real(a), Value::Real(b)) => {
                 if b == 0.0 {
                     return Err(CPSError {
@@ -2151,7 +2546,7 @@ impl Interpreter {
                     });
                 }
                 Ok(Value::Real(a % b))
-            },
+            }
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
                 message: format!("Unsupported types for modulo: {:?} % {:?}", left, right),
@@ -2187,8 +2582,6 @@ impl Interpreter {
         Ok(Value::String(format!("{}{}", left_str, right_str)))
     }
 
-
-
     fn equal(&self, left: Value, right: Value) -> Result<Value, CPSError> {
         values_are_equal(&left, &right)
             .map(|o| Value::Boolean(o))
@@ -2200,8 +2593,6 @@ impl Interpreter {
             .map(|o| Value::Boolean(!o))
             .ok_or_else(|| comparison_error("<>", &left, &right))
     }
-
-
 
     fn less_than(&self, left: Value, right: Value) -> Result<Value, CPSError> {
         compare_values(&left, &right)
@@ -2232,7 +2623,10 @@ impl Interpreter {
             (Value::Boolean(l), Value::Boolean(r)) => Ok(Value::Boolean(l && r)),
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Unsupported types for logical AND: {:?} AND {:?}", left, right),
+                message: format!(
+                    "Unsupported types for logical AND: {:?} AND {:?}",
+                    left, right
+                ),
                 hint: None,
                 line: 0,
                 column: 0,
@@ -2246,7 +2640,10 @@ impl Interpreter {
             (Value::Boolean(l), Value::Boolean(r)) => Ok(Value::Boolean(l || r)),
             _ => Err(CPSError {
                 error_type: ErrorType::Runtime,
-                message: format!("Unsupported types for logical OR: {:?} OR {:?}", left, right),
+                message: format!(
+                    "Unsupported types for logical OR: {:?} OR {:?}",
+                    left, right
+                ),
                 hint: None,
                 line: 0,
                 column: 0,
@@ -2255,37 +2652,29 @@ impl Interpreter {
         }
     }
 
-
-
-
-
     fn evaluate_literal(&self, lit: &Value) -> Result<Value, CPSError> {
         match lit {
-            Value::Integer(_) |
-            Value::Real(_) |
-            Value::String(_) |
-            Value::Boolean(_) |
-            Value::Array { .. } |
-            Value::Date(_) |
-            Value::Enum { .. } |
-            Value::Char(_) => {},
-            Value::Identifier(iden) => {
-                match self.current_env 
-                    .borrow()
-                    .get(iden) {
-                        Some(value) => return Ok(value),
-                        None => {
-                            return Err(CPSError {
-                                error_type: ErrorType::Runtime,
-                                message: format!("Undefined identifier: {}", iden),
-                                hint: None,
-                                line: 0,
-                                column: 0,
-                                source: None,
-                            });
-                        }
-                    }
-            }
+            Value::Integer(_)
+            | Value::Real(_)
+            | Value::String(_)
+            | Value::Boolean(_)
+            | Value::Array { .. }
+            | Value::Date(_)
+            | Value::Enum { .. }
+            | Value::Char(_) => {}
+            Value::Identifier(iden) => match self.current_env.borrow().get(iden) {
+                Some(value) => return Ok(value),
+                None => {
+                    return Err(CPSError {
+                        error_type: ErrorType::Runtime,
+                        message: format!("Undefined identifier: {}", iden),
+                        hint: None,
+                        line: 0,
+                        column: 0,
+                        source: None,
+                    });
+                }
+            },
             _ => {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
@@ -2299,9 +2688,6 @@ impl Interpreter {
         }
         Ok(lit.clone())
     }
-
-
-
 }
 
 fn check_if_type_can_be_converted(value: &Value, target_type: &Type) -> bool {
@@ -2314,9 +2700,21 @@ fn check_if_type_can_be_converted(value: &Value, target_type: &Type) -> bool {
         (Value::Integer(_), Type::Real) => true,
         (Value::Date(_), Type::Date) => true,
         (Value::Enum { type_name: l1, .. }, Type::Enum(r1)) => l1 == r1,
-        (Value::Array { array, lower_bound: _, bounds_2d: _ }, Type::Array(arr_type)) => {
+        (
+            Value::Array {
+                array,
+                lower_bound: _,
+                bounds_2d: _,
+            },
+            Type::Array(arr_type),
+        ) => {
             match arr_type {
-                ArrayType { lower_bound: _, upper_bound: _, base_type , bounds_2d: _} => {
+                ArrayType {
+                    lower_bound: _,
+                    upper_bound: _,
+                    base_type,
+                    bounds_2d: _,
+                } => {
                     if array.is_empty() {
                         return true; // empty array can be converted
                     }
@@ -2335,7 +2733,7 @@ fn check_if_type_can_be_converted(value: &Value, target_type: &Type) -> bool {
             } else {
                 false
             }
-        },
+        }
         _ => false,
     }
 }
@@ -2343,11 +2741,11 @@ fn check_if_type_can_be_converted(value: &Value, target_type: &Type) -> bool {
 fn check_if_types_match_exactly(actual: &Type, expected: &Type) -> bool {
     match (actual, expected) {
         (Type::Integer, Type::Integer) => true,
-        (Type::Real,    Type::Real)    => true,
-        (Type::String,  Type::String)  => true,
+        (Type::Real, Type::Real) => true,
+        (Type::String, Type::String) => true,
         (Type::Boolean, Type::Boolean) => true,
-        (Type::Char,    Type::Char)    => true,
-        (Type::Date,    Type::Date)    => true,
+        (Type::Char, Type::Char) => true,
+        (Type::Date, Type::Date) => true,
         (Type::Enum(l1), Type::Enum(r1)) => l1 == r1,
         (Type::Array(a), Type::Array(b)) => {
             a.bounds_2d.is_some() == b.bounds_2d.is_some()
@@ -2364,29 +2762,21 @@ fn check_if_types_match_exactly(actual: &Type, expected: &Type) -> bool {
 //         (Value::String(_), Value::String(_)) => true,
 //         (Value::Boolean(_), Value::Boolean(_)) => true,
 //         (Value::Char(_), Value::Char(_)) => true,
-//         
+//
 //         (Value::Integer(_), Value::Real(_)) => true,
 //         (Value::Real(_), Value::Integer(_)) => true,
-//         
+//
 //         _ => false,
 //     }
 // }
 
 fn convert_values_to_compatible_types(value1: &Value, value2: &Value) -> (Value, Value) {
     match (value1, value2) {
-        (Value::Integer(i), Value::Real(r)) => 
-        {
-            (Value::Real(*i as f64), Value::Real(*r))
-        },
-        (Value::Real(r), Value::Integer(i)) => {
-            (Value::Real(*r), Value::Real(*i as f64))
-        }
-        _ => {
-            (value1.clone(), value2.clone())
-        },
+        (Value::Integer(i), Value::Real(r)) => (Value::Real(*i as f64), Value::Real(*r)),
+        (Value::Real(r), Value::Integer(i)) => (Value::Real(*r), Value::Real(*i as f64)),
+        _ => (value1.clone(), value2.clone()),
     }
 }
-
 
 fn convert_values_to_base_type(value: &Value, target_type: &Type) -> Result<Value, CPSError> {
     match (value, target_type) {
@@ -2395,7 +2785,10 @@ fn convert_values_to_base_type(value: &Value, target_type: &Type) -> Result<Valu
             if r.fract() != 0.0 {
                 return Err(CPSError {
                     error_type: ErrorType::Runtime,
-                    message: format!("Cannot convert real number with fractional part to integer: {}", r),
+                    message: format!(
+                        "Cannot convert real number with fractional part to integer: {}",
+                        r
+                    ),
                     hint: None,
                     line: 0,
                     column: 0,
@@ -2403,7 +2796,7 @@ fn convert_values_to_base_type(value: &Value, target_type: &Type) -> Result<Valu
                 });
             }
             Ok(Value::Integer(*r as i64))
-        },
+        }
         _ => Ok(value.clone()),
     }
 }
@@ -2414,9 +2807,7 @@ fn comparison_error(op: &str, left: &Value, right: &Value) -> CPSError {
         Err(_) => "UNKNOWN".to_string(),
     };
 
-
     let (lt, rt) = (type_name(left), type_name(right));
-
 
     let message = if lt == rt {
         format!("Cannot compare two {} values using '{}'", lt, op)
@@ -2424,7 +2815,8 @@ fn comparison_error(op: &str, left: &Value, right: &Value) -> CPSError {
         format!("Cannot compare {} with {} using '{}'", lt, rt, op)
     };
 
-    let hint = if matches!((left, right), (Value::Real(l), Value::Real(r)) if l.is_nan() || r.is_nan()) {
+    let hint = if matches!((left, right), (Value::Real(l), Value::Real(r)) if l.is_nan() || r.is_nan())
+    {
         Some("A value that is not a number cannot be ordered".to_string())
     } else if lt == rt {
         Some(format!("{} values can only be compared with = and <>", lt))
@@ -2432,16 +2824,23 @@ fn comparison_error(op: &str, left: &Value, right: &Value) -> CPSError {
         Some("Both sides of a comparison must be the same type".to_string())
     };
 
-    CPSError { error_type: ErrorType::Runtime, message, hint, line: 0, column: 0, source: None }
+    CPSError {
+        error_type: ErrorType::Runtime,
+        message,
+        hint,
+        line: 0,
+        column: 0,
+        source: None,
+    }
 }
 
 fn compare_values(left: &Value, right: &Value) -> Option<Ordering> {
     match (left, right) {
         (Value::Integer(l), Value::Integer(r)) => Some(l.cmp(r)),
-        (Value::Real(l), Value::Real(r))       => l.partial_cmp(r),
-        (Value::String(l), Value::String(r))   => Some(l.cmp(r)),
-        (Value::Char(l), Value::Char(r))       => Some(l.cmp(r)),
-        (Value::Date(l), Value::Date(r))       => {
+        (Value::Real(l), Value::Real(r)) => l.partial_cmp(r),
+        (Value::String(l), Value::String(r)) => Some(l.cmp(r)),
+        (Value::Char(l), Value::Char(r)) => Some(l.cmp(r)),
+        (Value::Date(l), Value::Date(r)) => {
             Some((l.year, l.month, l.day).cmp(&(r.year, r.month, r.day)))
         }
         _ => None,
@@ -2451,13 +2850,33 @@ fn compare_values(left: &Value, right: &Value) -> Option<Ordering> {
 fn values_are_equal(left: &Value, right: &Value) -> Option<bool> {
     match (left, right) {
         (Value::Integer(l), Value::Integer(r)) => Some(l == r),
-        (Value::Real(l), Value::Real(r))       => Some(l == r),
-        (Value::String(l), Value::String(r))   => Some(l == r),
+        (Value::Real(l), Value::Real(r)) => Some(l == r),
+        (Value::String(l), Value::String(r)) => Some(l == r),
         (Value::Boolean(l), Value::Boolean(r)) => Some(l == r),
-        (Value::Char(l), Value::Char(r))       => Some(l == r),
-        (Value::Date(l), Value::Date(r))       => Some(l == r),
-        (Value::Enum { type_name: l1, variant: l2 }, Value::Enum { type_name: r1, variant: r2 }) if l1 == r1 => Some(l2 == r2),
-        (Value::Array { array: l1, lower_bound: l2, bounds_2d: l3 }, Value::Array { array: r1, lower_bound: r2, bounds_2d: r3 }) => Some(l1 == r1 && l2 == r2 && l3 == r3),
+        (Value::Char(l), Value::Char(r)) => Some(l == r),
+        (Value::Date(l), Value::Date(r)) => Some(l == r),
+        (
+            Value::Enum {
+                type_name: l1,
+                variant: l2,
+            },
+            Value::Enum {
+                type_name: r1,
+                variant: r2,
+            },
+        ) if l1 == r1 => Some(l2 == r2),
+        (
+            Value::Array {
+                array: l1,
+                lower_bound: l2,
+                bounds_2d: l3,
+            },
+            Value::Array {
+                array: r1,
+                lower_bound: r2,
+                bounds_2d: r3,
+            },
+        ) => Some(l1 == r1 && l2 == r2 && l3 == r3),
         _ => None,
     }
 }

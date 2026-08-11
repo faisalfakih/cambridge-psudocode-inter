@@ -6,10 +6,10 @@
 
 #![allow(non_snake_case)]
 
-pub mod errortype;
+pub mod Inter;
 pub mod Lexer;
 pub mod Parser;
-pub mod Inter;
+pub mod errortype;
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm_api;

@@ -1,6 +1,6 @@
+pub mod builtins;
 pub mod cps;
 pub mod interpreter;
-pub mod builtins;
 pub mod step_interpreter;
 
 // Thread+channel web bridge — not available in WASM builds.

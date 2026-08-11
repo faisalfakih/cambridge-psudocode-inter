@@ -2,7 +2,6 @@
 // NOTE: This was mostly done as an experiment by me to see how good it is at generating rust code
 // NOTE: Please keep that in mind when writing/reviewing code in these section
 
-
 //! WASM bindings — compiled only when targeting `wasm32`.
 //!
 //! Build with:
@@ -10,8 +9,8 @@
 
 #![cfg(target_arch = "wasm32")]
 
-use wasm_bindgen::prelude::*;
 use crate::Inter::step_interpreter::StepInterpreter;
+use wasm_bindgen::prelude::*;
 
 /// Drives a Cambridge pseudocode program from JavaScript one event at a time.
 ///
@@ -54,8 +53,16 @@ impl WebRunner {
         let event = self.inner.step();
         serde_wasm_bindgen::to_value(&event).unwrap_or_else(|e| {
             let obj = js_sys::Object::new();
-            let _ = js_sys::Reflect::set(&obj, &JsValue::from_str("type"), &JsValue::from_str("Error"));
-            let _ = js_sys::Reflect::set(&obj, &JsValue::from_str("message"), &JsValue::from_str(&e.to_string()));
+            let _ = js_sys::Reflect::set(
+                &obj,
+                &JsValue::from_str("type"),
+                &JsValue::from_str("Error"),
+            );
+            let _ = js_sys::Reflect::set(
+                &obj,
+                &JsValue::from_str("message"),
+                &JsValue::from_str(&e.to_string()),
+            );
             obj.into()
         })
     }
@@ -86,8 +93,16 @@ impl WebRunner {
         let names = self.inner.list_written_files();
         serde_wasm_bindgen::to_value(&names).unwrap_or_else(|e| {
             let obj = js_sys::Object::new();
-            let _ = js_sys::Reflect::set(&obj, &JsValue::from_str("error"), &JsValue::from_str("serialization_error"));
-            let _ = js_sys::Reflect::set(&obj, &JsValue::from_str("message"), &JsValue::from_str(&e.to_string()));
+            let _ = js_sys::Reflect::set(
+                &obj,
+                &JsValue::from_str("error"),
+                &JsValue::from_str("serialization_error"),
+            );
+            let _ = js_sys::Reflect::set(
+                &obj,
+                &JsValue::from_str("message"),
+                &JsValue::from_str(&e.to_string()),
+            );
             obj.into()
         })
     }

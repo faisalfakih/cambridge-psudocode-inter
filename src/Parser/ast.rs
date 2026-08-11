@@ -1,4 +1,7 @@
-use crate::{Inter::cps::{Type, Value}, Lexer::lexer::TokenType};
+use crate::{
+    Inter::cps::{Type, Value},
+    Lexer::lexer::TokenType,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FileMode {
@@ -40,16 +43,25 @@ pub struct BinaryExpr {
 pub enum Ast {
     Identifier(String),
     Expression(Expr),
-    Stmt(Stmt)
+    Stmt(Stmt),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Binary(BinaryExpr),
     Literal(Value),
-    Call { name: String, arguments: Vec<Expr> },
-    ArrayAccess { name: String, index: Box<Expr>, col: Option<Box<Expr>> }, // col for 2D arrays, the index exists for both 1D and 2D arrays but would be the row in a 2d array     
-    EOF { filename: String },
+    Call {
+        name: String,
+        arguments: Vec<Expr>,
+    },
+    ArrayAccess {
+        name: String,
+        index: Box<Expr>,
+        col: Option<Box<Expr>>,
+    }, // col for 2D arrays, the index exists for both 1D and 2D arrays but would be the row in a 2d array
+    EOF {
+        filename: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -59,21 +71,52 @@ pub enum PassingValue {
     ByRef,
 }
 
-
-
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
-    If { condition: Box<Expr>, then_branch: BlockStmt, else_branch: Option<BlockStmt> },
-    Case { identifier: Box<Expr>, cases: Vec<(CaseCondition, BlockStmt)>, otherwise: Option<BlockStmt> },
-    While { condition: Box<Expr>, body: BlockStmt },
-    Repeat { body: BlockStmt, until: Box<Expr> },
-    For { identifier: String, start: Box<Expr>, end: Box<Expr>, body: BlockStmt, step: Box<Expr> },
-    Assignment { identifier: String, array_index: Option<(Box<Expr>, Option<Box<Expr>>)>, value: Box<Ast> },
-    Constant { identifier: String, value: Value },
-    Decleration { identifier: String, type_: Type},
-    Input { identifier: Box<Expr> }, 
-    Output { target: Expr },
+    If {
+        condition: Box<Expr>,
+        then_branch: BlockStmt,
+        else_branch: Option<BlockStmt>,
+    },
+    Case {
+        identifier: Box<Expr>,
+        cases: Vec<(CaseCondition, BlockStmt)>,
+        otherwise: Option<BlockStmt>,
+    },
+    While {
+        condition: Box<Expr>,
+        body: BlockStmt,
+    },
+    Repeat {
+        body: BlockStmt,
+        until: Box<Expr>,
+    },
+    For {
+        identifier: String,
+        start: Box<Expr>,
+        end: Box<Expr>,
+        body: BlockStmt,
+        step: Box<Expr>,
+    },
+    Assignment {
+        identifier: String,
+        array_index: Option<(Box<Expr>, Option<Box<Expr>>)>,
+        value: Box<Ast>,
+    },
+    Constant {
+        identifier: String,
+        value: Value,
+    },
+    Decleration {
+        identifier: String,
+        type_: Type,
+    },
+    Input {
+        identifier: Box<Expr>,
+    },
+    Output {
+        target: Expr,
+    },
     Block(BlockStmt),
     Procedure {
         name: String,
@@ -86,28 +129,63 @@ pub enum Stmt {
         return_type: Type,
         body: BlockStmt,
     },
-    Return { value: Box<Expr> },
-    Call { name: String, arguments: Vec<Expr> }, 
-    OpenFile { filename: Box<Expr>, mode: FileMode },
-    CloseFile { filename: Box<Expr> },
-    ReadFile { filename: Box<Expr>, target: Box<Expr> },
-    WriteFile { filename: Box<Expr>, value: Box<Expr> },
-    EnumDeclaration { identifier: String, variants: Vec<String> },
-    At { line: usize, column: usize, inner: Box<Stmt> }, // wraps a statement with the position of its first token so that runtime errors can be located.
+    Return {
+        value: Box<Expr>,
+    },
+    Call {
+        name: String,
+        arguments: Vec<Expr>,
+    },
+    OpenFile {
+        filename: Box<Expr>,
+        mode: FileMode,
+    },
+    CloseFile {
+        filename: Box<Expr>,
+    },
+    ReadFile {
+        filename: Box<Expr>,
+        target: Box<Expr>,
+    },
+    WriteFile {
+        filename: Box<Expr>,
+        value: Box<Expr>,
+    },
+    EnumDeclaration {
+        identifier: String,
+        variants: Vec<String>,
+    },
+    At {
+        line: usize,
+        column: usize,
+        inner: Box<Stmt>,
+    }, // wraps a statement with the position of its first token so that runtime errors can be located.
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeDefinition {
-    Enumerated { name: String, values: Vec<String> }, // TYPE Season = (Spring, Summer, Autumn, Winter)
-    Pointer { name: String, points_to: Box<Type> }, // TYPE TypePointer = ^Type
+    Enumerated {
+        name: String,
+        values: Vec<String>,
+    }, // TYPE Season = (Spring, Summer, Autumn, Winter)
+    Pointer {
+        name: String,
+        points_to: Box<Type>,
+    }, // TYPE TypePointer = ^Type
     // TYPE StudentRecord
     //    DECLARE LastName : STRING
     //    ...
     // ENDTYPE
-    Record { name: String, fields: Vec<(String, Box<Type>)> }, 
+    Record {
+        name: String,
+        fields: Vec<(String, Box<Type>)>,
+    },
     // TYPE LetterSet = SET OF CHAR
     // DEFINE Vowels ('A','E','I','O','U') : LetterSet
-    Set { name: String, base_type: Box<Type> }, 
+    Set {
+        name: String,
+        base_type: Box<Type>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,8 +200,6 @@ pub enum CaseCondition {
     Range(Expr, Expr), // value1 TO value2
 }
 
-
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockStmt {
     pub statements: Vec<Stmt>,
@@ -134,9 +210,6 @@ impl BlockStmt {
         BlockStmt { statements }
     }
 }
-
-
-
 
 impl Expr {
     fn to_prefix(&self) -> String {
@@ -167,20 +240,18 @@ impl Expr {
                     binary.right.to_prefix()
                 )
             }
-            Expr::Literal(value) => {
-                match value {
-                    Value::Integer(n) => n.to_string(),
-                    Value::Real(f) => f.to_string(),
-                    Value::String(s) => format!("\"{}\"", s),
-                    Value::Boolean(b) => b.to_string(),
-                    Value::Char(c) => format!("'{}'", c),
-                    _ => "?".to_string(),
-                }
-            }
+            Expr::Literal(value) => match value {
+                Value::Integer(n) => n.to_string(),
+                Value::Real(f) => f.to_string(),
+                Value::String(s) => format!("\"{}\"", s),
+                Value::Boolean(b) => b.to_string(),
+                Value::Char(c) => format!("'{}'", c),
+                _ => "?".to_string(),
+            },
             Expr::Call { name, arguments } => {
                 let args: Vec<String> = arguments.iter().map(|arg| arg.to_prefix()).collect();
                 format!("CALL {}({})", name, args.join(", "))
-            },
+            }
             Expr::ArrayAccess { name, index, col } => {
                 if let Some(col_expr) = col {
                     format!("{}[{}, {}]", name, index.to_prefix(), col_expr.to_prefix())
@@ -197,7 +268,11 @@ impl Stmt {
     fn to_prefix(&self, indent: usize) -> String {
         let indent_str = "  ".repeat(indent);
         match self {
-            Stmt::If { condition, then_branch, else_branch } => {
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
                 let mut result = format!("{}IF {}\n", indent_str, condition.to_prefix());
                 result.push_str(&format!("{}THEN\n", indent_str));
                 for stmt in &then_branch.statements {
@@ -214,15 +289,28 @@ impl Stmt {
                 result.push_str(&format!("{}ENDIF", indent_str));
                 result
             }
-            Stmt::Case { identifier, cases, otherwise } => {
+            Stmt::Case {
+                identifier,
+                cases,
+                otherwise,
+            } => {
                 let mut result = format!("{}CASE {}\n", indent_str, identifier.to_prefix());
                 for (condition, block) in cases {
                     match condition {
                         CaseCondition::Single(expr) => {
-                            result.push_str(&format!("{}  WHEN {} THEN\n", indent_str, expr.to_prefix()));
+                            result.push_str(&format!(
+                                "{}  WHEN {} THEN\n",
+                                indent_str,
+                                expr.to_prefix()
+                            ));
                         }
                         CaseCondition::Range(start, end) => {
-                            result.push_str(&format!("{}  WHEN {} TO {} THEN\n", indent_str, start.to_prefix(), end.to_prefix()));
+                            result.push_str(&format!(
+                                "{}  WHEN {} TO {} THEN\n",
+                                indent_str,
+                                start.to_prefix(),
+                                end.to_prefix()
+                            ));
                         }
                     }
                     for stmt in &block.statements {
@@ -258,8 +346,21 @@ impl Stmt {
                 result.push_str(&format!("{}ENDWHILE", indent_str));
                 result
             }
-            Stmt::For { identifier, start, end, body, step } => {
-                let mut result = format!("{}FOR {} = {} TO {} STEP {}\n", indent_str, identifier, start.to_prefix(), end.to_prefix(), step.to_prefix());
+            Stmt::For {
+                identifier,
+                start,
+                end,
+                body,
+                step,
+            } => {
+                let mut result = format!(
+                    "{}FOR {} = {} TO {} STEP {}\n",
+                    indent_str,
+                    identifier,
+                    start.to_prefix(),
+                    end.to_prefix(),
+                    step.to_prefix()
+                );
                 for stmt in &body.statements {
                     result.push_str(&stmt.to_prefix(indent + 1));
                     result.push('\n');
@@ -267,12 +368,29 @@ impl Stmt {
                 result.push_str(&format!("{}ENDFOR", indent_str));
                 result
             }
-            Stmt::Assignment { identifier, array_index, value } => {
+            Stmt::Assignment {
+                identifier,
+                array_index,
+                value,
+            } => {
                 if let Some((index_expr, col_expr)) = array_index {
                     if let Some(col) = col_expr {
-                        format!("{}{}[{}, {}] := {}", indent_str, identifier, index_expr.to_prefix(), col.to_prefix(), value.to_prefix())
+                        format!(
+                            "{}{}[{}, {}] := {}",
+                            indent_str,
+                            identifier,
+                            index_expr.to_prefix(),
+                            col.to_prefix(),
+                            value.to_prefix()
+                        )
                     } else {
-                        format!("{}{}[{}] := {}", indent_str, identifier, index_expr.to_prefix(), value.to_prefix())
+                        format!(
+                            "{}{}[{}] := {}",
+                            indent_str,
+                            identifier,
+                            index_expr.to_prefix(),
+                            value.to_prefix()
+                        )
                     }
                 } else {
                     format!("{}{} := {}", indent_str, identifier, value.to_prefix())
@@ -299,9 +417,16 @@ impl Stmt {
                 result.push_str(&format!("{}END", indent_str));
                 result
             }
-            Stmt::Procedure { name, parameters, body } => {
+            Stmt::Procedure {
+                name,
+                parameters,
+                body,
+            } => {
                 let mut result = format!("{}PROCEDURE {}(", indent_str, name);
-                let params: Vec<String> = parameters.iter().map(|(n, t, p)| format!("{:?} {}: {:?}", p, n, t)).collect();
+                let params: Vec<String> = parameters
+                    .iter()
+                    .map(|(n, t, p)| format!("{:?} {}: {:?}", p, n, t))
+                    .collect();
                 result.push_str(&params.join(", "));
                 result.push_str(")\n");
                 for stmt in &body.statements {
@@ -311,9 +436,17 @@ impl Stmt {
                 result.push_str(&format!("{}ENDPROCEDURE", indent_str));
                 result
             }
-            Stmt::Function { name, parameters, return_type, body } => {
+            Stmt::Function {
+                name,
+                parameters,
+                return_type,
+                body,
+            } => {
                 let mut result = format!("{}FUNCTION {}(", indent_str, name);
-                let params: Vec<String> = parameters.iter().map(|(p, t, b)| format!("{:?} {}: {:?}", b, p, t)).collect();
+                let params: Vec<String> = parameters
+                    .iter()
+                    .map(|(p, t, b)| format!("{:?} {}: {:?}", b, p, t))
+                    .collect();
                 result.push_str(&params.join(", "));
                 result.push_str(&format!(") : {:?}\n", return_type));
                 for stmt in &body.statements {
@@ -336,16 +469,31 @@ impl Stmt {
                     FileMode::Write => "WRITE",
                     FileMode::Append => "APPEND",
                 };
-                format!("{}OPENFILE {} MODE {}", indent_str, filename.to_prefix(), mode_str)
+                format!(
+                    "{}OPENFILE {} MODE {}",
+                    indent_str,
+                    filename.to_prefix(),
+                    mode_str
+                )
             }
             Stmt::CloseFile { filename } => {
                 format!("{}CLOSEFILE {}", indent_str, filename.to_prefix())
             }
             Stmt::ReadFile { filename, target } => {
-                format!("{}READFILE {} INTO {}", indent_str, filename.to_prefix(), target.to_prefix())
+                format!(
+                    "{}READFILE {} INTO {}",
+                    indent_str,
+                    filename.to_prefix(),
+                    target.to_prefix()
+                )
             }
             Stmt::WriteFile { filename, value } => {
-                format!("{}WRITEFILE {} FROM {}", indent_str, filename.to_prefix(), value.to_prefix())
+                format!(
+                    "{}WRITEFILE {} FROM {}",
+                    indent_str,
+                    filename.to_prefix(),
+                    value.to_prefix()
+                )
             }
             // Stmt::TypeDef { type_definition } => {
             //     match type_definition {
@@ -369,10 +517,12 @@ impl Stmt {
             //         }
             //     }
             // }
-            Stmt::EnumDeclaration { identifier, variants: values } => {
+            Stmt::EnumDeclaration {
+                identifier,
+                variants: values,
+            } => {
                 let vals = values.join(", ");
                 format!("{}ENUM TYPE {} = ({})", indent_str, identifier, vals)
-
             }
             Stmt::At { inner, .. } => inner.to_prefix(indent),
         }
@@ -387,7 +537,7 @@ impl Ast {
             Ast::Expression(expr) => expr.to_prefix(),
         }
     }
-    
+
     pub fn print_prefix(&self) {
         println!("{}", self.to_prefix());
     }

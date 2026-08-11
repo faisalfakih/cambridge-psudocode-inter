@@ -2,7 +2,6 @@
 // NOTE: This was mostly done as an experiment by me to see how good it is at generating rust code
 // NOTE: Please keep that in mind when writing/reviewing code in these section
 
-
 //! Step-based interpreter for the WASM / web interface.
 //!
 //! ## Execution model
@@ -27,9 +26,9 @@
 //!    resets to 0 so the same sequence is produced.  New values are appended
 //!    at the end of the log and written back to `StepInterpreter` after each
 //!    replay, so they persist for subsequent calls to `step()`.
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 use crate::errortype::ErrorType;
 use crate::Inter::cps::Value;
@@ -138,15 +137,15 @@ impl StepInterpreter {
                     self.output_pos += 1;
                     StepEvent::Output { value }
                 }
-                ErrorType::StepNeedsInput(variable) => {
-                    StepEvent::NeedsInput { variable }
-                }
+                ErrorType::StepNeedsInput(variable) => StepEvent::NeedsInput { variable },
                 _ => {
                     // Genuine runtime / lexical / syntax error.
                     self.done = true;
-                    StepEvent::Error { message: e.to_string() }
+                    StepEvent::Error {
+                        message: e.to_string(),
+                    }
                 }
-            }
+            },
         }
     }
 
@@ -163,14 +162,17 @@ impl StepInterpreter {
     pub fn load_file(&mut self, name: &str, content: &str) {
         use crate::Parser::ast::FileMode;
         let lines: Vec<String> = content.split('\n').map(|s| s.to_string()).collect();
-        self.virtual_fs.insert(name.to_string(), VirtualFile {
-            lines,
-            read_pos: 0,
-            write_pos: 0,
-            mode: FileMode::Read,
-            open: false,
-            was_written: false,
-        });
+        self.virtual_fs.insert(
+            name.to_string(),
+            VirtualFile {
+                lines,
+                read_pos: 0,
+                write_pos: 0,
+                mode: FileMode::Read,
+                open: false,
+                was_written: false,
+            },
+        );
     }
 
     /// Return the current contents of a virtual file joined by `\n`, or

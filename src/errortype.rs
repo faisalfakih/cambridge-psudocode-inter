@@ -1,8 +1,7 @@
-use std::error::Error;
 use colored::Colorize;
+use std::error::Error;
 
 use crate::Inter::cps::Value;
-
 
 #[derive(Debug, Clone)]
 pub enum ErrorType {
@@ -21,7 +20,7 @@ pub enum ErrorType {
 pub struct CPSError {
     pub error_type: ErrorType,
     pub message: String,
-    pub hint : Option<String>,
+    pub hint: Option<String>,
     pub line: usize,
     pub column: usize,
     pub source: Option<String>,
@@ -33,7 +32,10 @@ impl CPSError {
     // attach the position of the statement the error has unwinded through, keeping whatever position was already recorded (the innermost one is the most specific).
     #[inline]
     pub fn locate(mut self, line: usize, column: usize, source: &str) -> Self {
-        if matches!(self.error_type, ErrorType::Return(_) | ErrorType::StepOutput(_) | ErrorType::StepNeedsInput(_)) {
+        if matches!(
+            self.error_type,
+            ErrorType::Return(_) | ErrorType::StepOutput(_) | ErrorType::StepNeedsInput(_)
+        ) {
             return self;
         }
         if self.line == 0 && self.column == 0 {
@@ -58,19 +60,21 @@ impl std::fmt::Display for ErrorType {
         }
     }
 }
-    
-
 
 impl std::fmt::Display for CPSError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if self.line == 0 && self.column == 0 {
-            let _ = writeln!(f, "{}: {}: {}",
+            let _ = writeln!(
+                f,
+                "{}: {}: {}",
                 "ERROR".bright_red().bold(),
                 format!("{:?} Error", self.error_type).bright_red(),
                 self.message
             );
         } else {
-            let _ = writeln!(f, "{}: {} at line {}, column {}: {}",
+            let _ = writeln!(
+                f,
+                "{}: {} at line {}, column {}: {}",
                 "ERROR".bright_red().bold(),
                 format!("{:?} Error", self.error_type).bright_red(),
                 self.line,
@@ -80,28 +84,36 @@ impl std::fmt::Display for CPSError {
         }
         if let Some(source) = &self.source {
             let lines: Vec<&str> = source.lines().collect();
-            
+
             if self.line > 0 && self.line <= lines.len() {
                 let error_line = lines[self.line - 1];
                 let start = self.column.saturating_sub(1).min(error_line.len());
                 let underline_length = (error_line.len() - start).max(1);
 
                 writeln!(f, "{}", error_line)?;
-                writeln!(f, "{}{}",
+                writeln!(
+                    f,
+                    "{}{}",
                     " ".repeat(start),
                     "^".repeat(underline_length).bright_red().bold()
                 )?;
             }
         }
-        
+
         if let Some(hint) = &self.hint {
             let _ = writeln!(f, "{}: {}", "HINT".bright_yellow().bold(), hint);
-        } 
+        }
 
-        write!(f, "\n{}",
-            format!("Think this is a bug in the interpreter? Report it: {}",
-                "https://github.com/faisalfakih/cambridge-pseudocode-inter/issues".bright_blue().underline()
-            ).dimmed()
+        write!(
+            f,
+            "\n{}",
+            format!(
+                "Think this is a bug in the interpreter? Report it: {}",
+                "https://github.com/faisalfakih/cambridge-pseudocode-inter/issues"
+                    .bright_blue()
+                    .underline()
+            )
+            .dimmed()
         )
     }
 }

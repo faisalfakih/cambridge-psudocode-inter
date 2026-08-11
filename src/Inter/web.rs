@@ -44,16 +44,14 @@ impl std::fmt::Debug for WebContext {
 ///
 /// Each call spins up an independent thread so multiple programs can run
 /// concurrently, each with its own channel pair.
-pub fn run_web(
-    source: String,
-) -> (thread::JoinHandle<()>, Sender<String>, Receiver<WebEvent>) {
+pub fn run_web(source: String) -> (thread::JoinHandle<()>, Sender<String>, Receiver<WebEvent>) {
     let (event_tx, event_rx) = mpsc::channel::<WebEvent>();
     let (input_tx, input_rx) = mpsc::channel::<String>();
 
     let handle = thread::spawn(move || {
+        use crate::Inter::interpreter::Interpreter;
         use crate::Lexer::lexer::Lexer;
         use crate::Parser::parser::Parser;
-        use crate::Inter::interpreter::Interpreter;
 
         let lexer = Lexer::new(source.clone());
         let tokens = match lexer.tokenize() {
@@ -73,10 +71,13 @@ pub fn run_web(
             }
         };
 
-        let mut interpreter = Interpreter::new_web(source, WebContext {
-            event_tx: event_tx.clone(),
-            input_rx,
-        });
+        let mut interpreter = Interpreter::new_web(
+            source,
+            WebContext {
+                event_tx: event_tx.clone(),
+                input_rx,
+            },
+        );
 
         match interpreter.interpret(ast) {
             Ok(_) => {
